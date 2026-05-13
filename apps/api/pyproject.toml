@@ -1,0 +1,98 @@
+[project]
+name = "local_bazaar"
+version = "0.1.0"
+description = "Semt Pazarı — Turkey neighborhood-markets and wholesale-prices platform (FastAPI backend)"
+requires-python = ">=3.14"
+license = { text = "Proprietary" }
+authors = [{ name = "Gokhan Simsek", email = "gokhan.simsek@osf.digital" }]
+
+dependencies = [
+    "fastapi[standard]>=0.115",
+    "uvicorn[standard]>=0.32",
+    "sqlmodel>=0.0.22",
+    "sqlalchemy[asyncio]>=2.0.36",
+    "psycopg[binary]>=3.2",
+    "alembic>=1.14",
+    "pydantic-settings>=2.6",
+    "httpx>=0.28",
+    "selectolax>=0.3.27",
+    "apscheduler>=3.10",
+    "python-dateutil>=2.9",
+    "tenacity>=9.0",
+    "structlog>=24.4",
+    "slowapi>=0.1.9",
+]
+
+[project.optional-dependencies]
+dev = [
+    "ruff>=0.7",
+    "pytest>=8.3",
+    "pytest-asyncio>=0.24",
+    "pytest-cov>=6.0",
+    "respx>=0.21",
+    "mypy>=1.13",
+    "pyright>=1.1.390",
+    "flake8>=7.1",
+    "flake8-bugbear>=24.10",
+    "flake8-comprehensions>=3.16",
+    "flake8-docstrings>=1.7",
+    "pre-commit>=4.0",
+]
+playwright = [
+    "playwright>=1.48",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/local_bazaar"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py314"
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = [
+    "E", "F", "I", "B", "UP", "SIM", "ASYNC", "RUF",
+    "D",    # pydocstyle — mandatory docstrings on public surface
+    "ANN",  # flake8-annotations — mandatory type annotations on functions
+]
+ignore = [
+    "E501",   # ruff format handles line length
+    "RUF001", # ambiguous-unicode-character-string — false-positive on legitimate Turkish ı/ö/ş
+    "RUF002", # ambiguous-unicode-character-docstring — same as above
+    "RUF003", # ambiguous-unicode-character-comment — same as above
+    "D107",   # missing docstring on __init__ — class docstring is enough
+    "D203",   # incompatible with google convention (covered by D211)
+    "D212",   # multi-line docstring summary on first line — we prefer D213 form
+    "D413",   # missing blank line after last section — noisy on short docstrings
+    "ANN401", # allow typing.Any sparingly when the type is genuinely dynamic
+]
+
+[tool.ruff.lint.pydocstyle]
+convention = "google"
+
+[tool.ruff.lint.per-file-ignores]
+# Tests are documented by name; we still require annotations though.
+"tests/*" = ["D"]
+"migrations/*" = ["D", "ANN"]
+
+# FastAPI Depends/Query in argument defaults is the intended pattern, not a B008 anti-pattern.
+[tool.ruff.lint.flake8-bugbear]
+extend-immutable-calls = ["fastapi.Depends", "fastapi.Query", "fastapi.Header", "fastapi.Path", "fastapi.Cookie", "fastapi.Body"]
+
+[tool.ruff.format]
+quote-style = "double"
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+pythonpath = ["src"]
+
+[tool.mypy]
+python_version = "3.14"
+strict = true
+mypy_path = "src"

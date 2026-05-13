@@ -1,0 +1,31 @@
+# AWS ALB Ingress (via AWS Load Balancer Controller).
+# Overlays should patch the host, ACM cert ARN, and any WAF/Shield annotations.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: local-bazaar
+  annotations:
+    kubernetes.io/ingress.class: alb
+    alb.ingress.kubernetes.io/scheme: internet-facing
+    alb.ingress.kubernetes.io/target-type: ip
+    alb.ingress.kubernetes.io/listen-ports: '[{"HTTP": 80}, {"HTTPS": 443}]'
+    alb.ingress.kubernetes.io/ssl-redirect: "443"
+    # Overlay sets:
+    # alb.ingress.kubernetes.io/certificate-arn: arn:aws:acm:eu-west-1:...:certificate/...
+spec:
+  ingressClassName: alb
+  rules:
+    # Only the web service is exposed to the internet. /api requests from the
+    # browser hit the web service first and are proxied to the internal api
+    # Service via Next.js rewrites (see apps/web/next.config.mjs). The api
+    # Service is ClusterIP only, so it is never reachable externally.
+    - host: local-bazaar.example.com  # overlay overrides
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: web
+                port:
+                  number: 80

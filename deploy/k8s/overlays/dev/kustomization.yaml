@@ -1,0 +1,34 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: local-bazaar-dev
+
+resources:
+  - ../../base
+
+# Override images with the dev ECR tags. Replace <account>/<region>/<repo> in your CI.
+images:
+  - name: local-bazaar/api
+    newName: 000000000000.dkr.ecr.eu-west-1.amazonaws.com/local-bazaar-api
+    newTag: dev
+  - name: local-bazaar/web
+    newName: 000000000000.dkr.ecr.eu-west-1.amazonaws.com/local-bazaar-web
+    newTag: dev
+
+patches:
+  - target:
+      kind: Ingress
+      name: local-bazaar
+    patch: |
+      - op: replace
+        path: /spec/rules/0/host
+        value: dev.local-bazaar.example.com
+  - target:
+      kind: ConfigMap
+      name: api-config
+    patch: |
+      - op: replace
+        path: /data/API_CORS_ORIGINS
+        value: https://dev.local-bazaar.example.com
+  # API_INTERNAL_URL stays at the base value (http://api). The API Service is
+  # ClusterIP — same DNS works in dev and prod, no overlay patch needed.

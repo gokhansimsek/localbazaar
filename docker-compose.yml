@@ -1,0 +1,50 @@
+services:
+  api:
+    build:
+      context: ./apps/api
+      dockerfile: Dockerfile
+    environment:
+      # Point this at your external Postgres (e.g. AWS RDS). Set DATABASE_URL in .env.
+      DATABASE_URL: ${DATABASE_URL:?DATABASE_URL must be set (external Postgres / RDS endpoint)}
+      API_HOST: 0.0.0.0
+      API_PORT: "8000"
+      API_LOG_LEVEL: ${API_LOG_LEVEL:-info}
+      API_CORS_ORIGINS: ${API_CORS_ORIGINS:-http://localhost:3000}
+      # Keep /docs + /openapi.json on for local dev; production overlays leave
+      # this unset so the API surface is opaque to external clients.
+      ENABLE_API_DOCS: ${ENABLE_API_DOCS:-1}
+      SCRAPER_USER_AGENT: ${SCRAPER_USER_AGENT:-local_bazaar/0.1}
+      SCRAPER_DAILY_HOUR: ${SCRAPER_DAILY_HOUR:-2}
+      SCRAPER_DISABLE_SCHEDULER: ${SCRAPER_DISABLE_SCHEDULER:-0}
+      GOOGLE_MAPS_API_KEY: ${GOOGLE_MAPS_API_KEY:-}
+    ports:
+      # Host-loopback only. The API is reached from the web container via the
+      # internal Docker network (http://api:8000). Exposing on 127.0.0.1 keeps
+      # /docs accessible from the developer's machine without putting the API
+      # on the LAN or the public internet.
+      - "127.0.0.1:8000:8000"
+    volumes:
+      - ./apps/api:/app
+    # The image's /opt/venv is on PATH, so call uvicorn (and other tools) directly.
+    # Avoid `uv run` here because uv tries to re-sync against the bind-mounted /app,
+    # which fails with permission errors on the root-owned venv inside the container.
+    command: ["uvicorn", "local_bazaar.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
+
+  web:
+    build:
+      context: ./apps/web
+      dockerfile: Dockerfile
+      target: dev
+    environment:
+      # The browser never sees this. Next.js reads it server-side to proxy
+      # /api/* to the internal API service.
+      API_INTERNAL_URL: http://api:8000
+      NEXT_PUBLIC_GOOGLE_MAPS_API_KEY: ${NEXT_PUBLIC_GOOGLE_MAPS_API_KEY:-}
+    ports:
+      - "3000:3000"
+    depends_on:
+      - api
+    # No bind mount: pnpm's symlinked node_modules can't survive a host overlay reliably.
+    # For frontend hot-reload iterate with `pnpm dev` on the host (Node 20+ via nvm-windows).
+    # The container is here to verify the image builds and the dev server boots.
+    command: ["pnpm", "dev"]

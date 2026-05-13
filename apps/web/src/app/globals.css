@@ -1,0 +1,99 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --font-inter: "Inter", system-ui, sans-serif;
+    color-scheme: light;
+  }
+
+  html {
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+  }
+
+  body {
+    @apply bg-surface-subtle font-sans text-ink;
+    background-image:
+      radial-gradient(ellipse 90% 50% at 50% -10%, rgba(99, 91, 255, 0.1), transparent 60%),
+      linear-gradient(180deg, #f6f9fc 0%, #ffffff 100%);
+    background-attachment: fixed;
+    min-height: 100vh;
+    font-feature-settings: "ss01", "cv05", "cv11";
+  }
+
+  h1,
+  h2,
+  h3,
+  h4 {
+    @apply font-display tracking-tight text-ink;
+  }
+}
+
+@layer utilities {
+  @keyframes mapPulse {
+    0% { transform: translate(-50%,-50%) scale(0.6); opacity: 0.6; }
+    80% { transform: translate(-50%,-50%) scale(3.6); opacity: 0; }
+    100% { transform: translate(-50%,-50%) scale(3.6); opacity: 0; }
+  }
+  @keyframes mapScan {
+    0% { transform: translateX(0); opacity: 0; }
+    20%, 70% { opacity: 1; }
+    100% { transform: translateX(400%); opacity: 0; }
+  }
+  @keyframes tooltipFloat {
+    0%, 100% { transform: translate(-50%, -140%); }
+    50% { transform: translate(-50%, -150%); }
+  }
+  @keyframes priceScroll {
+    0% { transform: translateY(0); }
+    100% { transform: translateY(-50%); }
+  }
+  @keyframes sparkDraw {
+    0% { stroke-dashoffset: 600; }
+    55% { stroke-dashoffset: 0; }
+    100% { stroke-dashoffset: 0; }
+  }
+  @keyframes sparkDot {
+    0% { opacity: 0; transform: translateX(-300px); }
+    55% { opacity: 1; transform: translateX(0); }
+    90% { opacity: 1; transform: translateX(0); }
+    100% { opacity: 0; transform: translateX(0); }
+  }
+  @keyframes barRise {
+    0% { transform: scaleY(0); }
+    35%, 100% { transform: scaleY(1); }
+  }
+}
+
+@layer components {
+  .card {
+    @apply rounded-2xl border border-surface-border bg-white shadow-soft;
+  }
+
+  .btn-primary {
+    @apply inline-flex items-center justify-center gap-2 rounded-xl bg-indigo-500 px-4 py-2.5 text-sm font-medium text-white transition-all duration-150 ease-out hover:bg-indigo-600 focus:shadow-ring focus:outline-none active:scale-[0.98];
+  }
+
+  .btn-ghost {
+    @apply inline-flex items-center justify-center gap-2 rounded-xl bg-transparent px-4 py-2.5 text-sm font-medium text-ink-soft transition-colors duration-150 hover:bg-surface-muted hover:text-ink;
+  }
+
+  .chip {
+    @apply inline-flex items-center gap-1.5 rounded-full bg-indigo-50 px-2.5 py-0.5 text-xs font-medium text-indigo-700;
+  }
+
+  .stat-up {
+    @apply text-success;
+  }
+  .stat-down {
+    @apply text-danger;
+  }
+
+  /* Subtle row hover for data tables */
+  .data-row {
+    @apply cursor-pointer transition-colors duration-100 hover:bg-indigo-50/50;
+  }
+}

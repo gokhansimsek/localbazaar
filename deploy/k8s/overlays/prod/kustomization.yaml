@@ -1,0 +1,33 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: local-bazaar
+
+resources:
+  - ../../base
+
+images:
+  - name: local-bazaar/api
+    newName: 000000000000.dkr.ecr.eu-west-1.amazonaws.com/local-bazaar-api
+    newTag: prod
+  - name: local-bazaar/web
+    newName: 000000000000.dkr.ecr.eu-west-1.amazonaws.com/local-bazaar-web
+    newTag: prod
+
+replicas:
+  - name: api
+    count: 3
+  - name: web
+    count: 3
+
+patches:
+  - target:
+      kind: Ingress
+      name: local-bazaar
+    patch: |
+      - op: replace
+        path: /spec/rules/0/host
+        value: local-bazaar.example.com
+      - op: add
+        path: /metadata/annotations/alb.ingress.kubernetes.io~1certificate-arn
+        value: arn:aws:acm:eu-west-1:000000000000:certificate/REPLACE_ME

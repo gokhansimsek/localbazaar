@@ -1,0 +1,43 @@
+# Daily scrape, runs at 02:00 Europe/Istanbul (= 23:00 UTC previous day).
+# In-cluster scheduler is disabled (SCRAPER_DISABLE_SCHEDULER=1 on api Deployment),
+# so this CronJob is the canonical daily trigger.
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: scrape-daily
+  labels:
+    app.kubernetes.io/name: scrape-daily
+    app.kubernetes.io/part-of: local-bazaar
+spec:
+  schedule: "0 23 * * *"
+  timeZone: "UTC"
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  concurrencyPolicy: Forbid
+  jobTemplate:
+    spec:
+      backoffLimit: 2
+      activeDeadlineSeconds: 3600
+      template:
+        spec:
+          restartPolicy: OnFailure
+          containers:
+            - name: scrape
+              image: local-bazaar/api:latest
+              command:
+                - python
+                - -m
+                - local_bazaar.scrapers.hal_gov_tr
+              env:
+                - name: DATABASE_URL
+                  valueFrom:
+                    secretKeyRef:
+                      name: api-secrets
+                      key: DATABASE_URL
+              resources:
+                requests:
+                  cpu: 100m
+                  memory: 256Mi
+                limits:
+                  cpu: 500m
+                  memory: 512Mi

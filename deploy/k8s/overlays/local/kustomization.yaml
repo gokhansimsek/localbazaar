@@ -1,0 +1,87 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: local-bazaar
+
+resources:
+  - ../../base
+  - secrets.yaml
+
+images:
+  - name: local-bazaar/api
+    newTag: local
+  - name: local-bazaar/web
+    newTag: local
+
+# Local Docker Desktop k8s has no ingress controller, no ECR, and a built-in
+# host.docker.internal that lets pods reach the host's Postgres. Patches:
+#   1. imagePullPolicy: Never so the kubelet uses the local image store and
+#      doesn't try (and fail) to pull from a registry.
+#   2. web Service → LoadBalancer on port 8080 so Docker Desktop maps it to
+#      localhost:8080. API stays ClusterIP (cluster-internal only).
+#   3. web-config ConfigMap gets the browser-side Maps key (the api-secrets
+#      Secret holds the server-side key separately).
+#   4. api-config CORS to the LoadBalancer URL (defense-in-depth; the actual
+#      browser path is same-origin via the Next.js proxy).
+#   5. The base Ingress is left as-is — without a controller it's inert,
+#      and removing it from a kustomize overlay is more friction than value.
+patches:
+  - patch: |-
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: api
+      spec:
+        template:
+          spec:
+            containers:
+              - name: api
+                imagePullPolicy: Never
+  - patch: |-
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: web
+      spec:
+        template:
+          spec:
+            containers:
+              - name: web
+                imagePullPolicy: Never
+  - patch: |-
+      apiVersion: batch/v1
+      kind: CronJob
+      metadata:
+        name: scrape-daily
+      spec:
+        jobTemplate:
+          spec:
+            template:
+              spec:
+                containers:
+                  - name: scrape
+                    imagePullPolicy: Never
+  - target:
+      kind: Service
+      name: web
+    patch: |
+      - op: replace
+        path: /spec/type
+        value: LoadBalancer
+      - op: replace
+        path: /spec/ports/0/port
+        value: 8080
+  - target:
+      kind: ConfigMap
+      name: api-config
+    patch: |
+      - op: replace
+        path: /data/API_CORS_ORIGINS
+        value: http://localhost:8080
+  - target:
+      kind: ConfigMap
+      name: web-config
+    patch: |
+      - op: add
+        path: /data/NEXT_PUBLIC_GOOGLE_MAPS_API_KEY
+        value: "AIzaSyASPudiIMz2LN936aGOw2hdVwGlM6MTzQw"

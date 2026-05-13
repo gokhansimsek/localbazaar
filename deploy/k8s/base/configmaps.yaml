@@ -1,0 +1,19 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: api-config
+data:
+  API_CORS_ORIGINS: "https://local-bazaar.example.com"
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: web-config
+data:
+  # Server-side only. The browser never sees this. Next.js proxies same-origin
+  # /api/* calls to this URL — the api Service is ClusterIP and unreachable
+  # from outside the cluster.
+  API_INTERNAL_URL: "http://api:8000"
+  # Browser-side Google Maps key. NOT the server key — restrict by HTTP referrer in GCP console.
+  # Overlay can replace this; never commit a real key here.
+  NEXT_PUBLIC_GOOGLE_MAPS_API_KEY: ""

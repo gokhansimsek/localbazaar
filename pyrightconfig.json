@@ -1,0 +1,22 @@
+{
+  "include": ["apps/api/src", "apps/api/tests", "apps/api/migrations"],
+  "exclude": ["**/.venv", "**/__pycache__", "**/.uv_tmp"],
+  "extraPaths": ["apps/api/src"],
+  "venvPath": "apps/api",
+  "venv": ".venv",
+  "pythonVersion": "3.14",
+  "pythonPlatform": "All",
+  "typeCheckingMode": "standard",
+  "reportMissingImports": "warning",
+  "reportMissingTypeStubs": "none",
+  "reportUnusedImport": "warning",
+  "reportUnusedVariable": "warning",
+  "reportUnknownMemberType": "none",
+  "reportUnknownArgumentType": "none",
+  "reportUnknownVariableType": "none",
+  "reportUnknownLambdaType": "none",
+  "reportUnknownParameterType": "none",
+  "reportAssignmentType": "none",
+  "reportReturnType": "warning",
+  "reportGeneralTypeIssues": "warning"
+}

@@ -1,0 +1,84 @@
+# Pre-commit hooks for local_bazaar.
+# Install once after `git init`:
+#   pip install pre-commit  (or: uv tool install pre-commit)
+#   pre-commit install
+#
+# Every hook listed here is enforced before each commit. Bypass is intentionally
+# discouraged — fix the issue rather than skipping the hook.
+
+default_install_hook_types: [pre-commit]
+default_stages: [pre-commit]
+
+repos:
+  # --- Generic hygiene --------------------------------------------------
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: check-yaml
+      - id: check-added-large-files
+        args: [--maxkb=512]
+      - id: check-merge-conflict
+      - id: mixed-line-ending
+        args: [--fix=lf]
+      - id: detect-private-key
+
+  # --- Python: ruff (lint + format) ------------------------------------
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.7.4
+    hooks:
+      - id: ruff
+        name: ruff lint (apps/api)
+        args: [--fix]
+        files: ^apps/api/
+      - id: ruff-format
+        name: ruff format (apps/api)
+        files: ^apps/api/
+
+  # --- Python: flake8 (defense-in-depth on top of ruff) ----------------
+  - repo: https://github.com/pycqa/flake8
+    rev: 7.1.1
+    hooks:
+      - id: flake8
+        name: flake8 (apps/api)
+        additional_dependencies:
+          - flake8-bugbear>=24.10
+          - flake8-comprehensions>=3.16
+          - flake8-docstrings>=1.7
+        files: ^apps/api/(src|tests)/
+        args: [--config=apps/api/.flake8]
+
+  # --- Python: pyright (strict type check) -----------------------------
+  # Uses pyrightconfig.json at the repo root so Pylance and pre-commit pyright
+  # see the same settings.
+  - repo: https://github.com/RobertCraigie/pyright-python
+    rev: v1.1.390
+    hooks:
+      - id: pyright
+        name: pyright (apps/api)
+        files: ^apps/api/(src|tests|migrations)/
+
+  # --- Frontend: prettier + eslint + tsc -------------------------------
+  - repo: local
+    hooks:
+      - id: prettier
+        name: prettier (apps/web)
+        language: system
+        entry: pnpm --dir apps/web run format:check
+        files: ^apps/web/.+\.(ts|tsx|js|jsx|json|css|md|mjs|cjs)$
+        pass_filenames: false
+
+      - id: eslint
+        name: eslint (apps/web)
+        language: system
+        entry: pnpm --dir apps/web run lint
+        files: ^apps/web/.+\.(ts|tsx|js|jsx|mjs|cjs)$
+        pass_filenames: false
+
+      - id: typecheck-web
+        name: tsc --noEmit (apps/web)
+        language: system
+        entry: pnpm --dir apps/web run typecheck
+        files: ^apps/web/.+\.(ts|tsx)$
+        pass_filenames: false

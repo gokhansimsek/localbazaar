@@ -1,0 +1,35 @@
+[flake8]
+# Ruff handles most flake8 rules + format. Keep flake8 in pre-commit as a defense-in-depth
+# pass for plugins ruff does not cover natively (bugbear, comprehensions, docstrings).
+max-line-length = 100
+extend-select = B,C,D
+docstring-convention = google
+# Suppress rules that ruff already enforces or that conflict with this project's style.
+extend-ignore =
+    # E501 — line length is enforced by ruff format.
+    E501,
+    # W503 — conflicts with PEP 8 W504 and ruff format's line-break style.
+    W503,
+    # E203 — disagreement with PEP 8 and ruff format around slices.
+    E203,
+    # B008 — false-positive on FastAPI Depends/Query/Path/Body in argument defaults.
+    B008,
+    # D104 — package __init__.py without a docstring is fine when the package name is self-explanatory.
+    D104,
+    # D203/D213 — incompatible with google convention.
+    D203, D213,
+    # D107 — class docstring covers __init__.
+    D107,
+    # D413 — missing blank line after last docstring section, noisy on short docstrings.
+    D413,
+exclude =
+    .git,
+    __pycache__,
+    .venv,
+    .uv_tmp,
+    build,
+    dist,
+    migrations,
+per-file-ignores =
+    tests/*: D
+    src/local_bazaar/__init__.py: D
