@@ -9,11 +9,11 @@ Guidance for Claude Code sessions working in this repo.
 1. **Hal Fiyatları** — daily and historical wholesale-market ("hal") prices for agricultural products, sourced from the national `hal.gov.tr` bulletin (and, eventually, per-city sources). Stored per city, per product, per (variety × category) variant.
 2. **Pazar Yerleri** — every neighborhood (semt) and producer (üretici) market published by hal.gov.tr, normalized into provinces → districts → markets and geocoded via the Google Maps Geocoding API for display on a map.
 
-A FastAPI backend exposes the data; a Next.js UI renders the dashboards (`/`, `/trends`, `/products/[name]`) for Hal Fiyatları and the map page (`/markets`) for Pazar Yerleri. The system is deployed as containers on AWS via Kubernetes.
+A FastAPI backend exposes the data; a Next.js UI renders a Linear-style landing page at `/`, Hal Fiyatları at `/prices`, historical trends at `/trends`, per-product detail at `/products/[name]`, and a Google Maps view of pazar yerleri at `/markets`. The system is deployed as containers on AWS via Kubernetes.
 
 ### Internal naming
 
-Internal identifiers use `local_bazaar` (snake) / `local-bazaar` (kebab) consistently across code, infra, and storage. **User-visible strings — page titles, sidebar, OpenAPI summary, README — say "Semt Pazarı".**
+Internal identifiers use `local_bazaar` (snake) / `local-bazaar` (kebab) consistently across code, infra, and storage. **User-visible strings — page titles, top header, OpenAPI summary, README — say "Semt Pazarı".**
 
 - `apps/api/src/local_bazaar/` — Python package and all imports
 - `apps/api/pyproject.toml` — ``name = "local_bazaar"``
@@ -25,11 +25,20 @@ Internal identifiers use `local_bazaar` (snake) / `local-bazaar` (kebab) consist
 Scaffolding is complete and gated by quality tools. The repo has:
 
 - A working monorepo (`apps/api`, `apps/web`, `deploy/k8s`).
-- One consolidated Alembic baseline: `0001_initial_schema` (cities + scrape_runs + `prices_national` + provinces + districts + markets). Targets an empty database (e.g. a fresh RDS instance).
-- Three scrapers: `hal_gov_tr` (national bulletin), `bazaar_locations` (markets), and a per-city dispatcher under `scrapers/cities/`.
-- Google Maps geocoding (`geocoding.py`) and a map page in the Next.js UI.
-- 71 backend tests + 35 frontend tests, all green. 8 backend integration tests are auto-skipped without `TEST_DATABASE_URL`.
-- Pre-commit hooks enforcing ruff + flake8 + pyright (Python) and prettier + eslint + tsc (TypeScript).
+- Four Alembic migrations:
+  - `0001_initial_schema` (cities + scrape_runs + `prices_national` + provinces + districts + markets)
+  - `0002_seed_tr_geography` (81 provinces + 973 districts from a checked-in JSON fixture)
+  - `0003_widen_markets_address` (column widen for free-text addresses)
+  - `0004_seed_city_scrapers` (registers 9 per-city scrapers: adana, ankara, antalya, bursa, istanbul, izmir, kocaeli, konya, sanliurfa)
+- Eleven scrapers:
+  - `hal_gov_tr` — national bulletin (synthetic city `national`)
+  - `bazaar_locations` — every neighborhood + producer market across all 81 provinces
+  - `cities/{adana,ankara,bursa,istanbul,izmir,kocaeli,konya,sanliurfa}` — plain HTTP scrapers
+  - `cities/antalya` — Playwright-driven scraper (the source is a Vue SPA)
+- A Linear-style homepage at `/` with three embedded animated UI previews (Markets, Prices, Trends). Sticky top header replaces the old left sidebar; the homepage cards act as primary navigation.
+- Google Maps geocoding (`geocoding.py`) and a map page (`/markets`) with a "Konumumu Kullan" button that reverse-geocodes the browser's coordinates into both province (`administrative_area_level_1`) and district (`administrative_area_level_2`).
+- Network-private API model: the browser only ever talks to same-origin `/api/*` on the web service; Next.js proxies via the server-side `API_INTERNAL_URL` rewrite. Locally the API port binds to `127.0.0.1:8000`; in Kubernetes the API Service is `ClusterIP` and the Ingress only routes `/`. `/docs`, `/redoc`, `/openapi.json` are gated by `ENABLE_API_DOCS` (off by default; the local docker-compose sets it to 1 for dev).
+- Pre-commit hooks enforcing ruff + flake8 + pyright (Python) and prettier + eslint + tsc (TypeScript). All three Python linters currently report zero issues on `apps/api/src`.
 
 No git yet (the user is initializing git later). When code drifts from this document, trust the code and update this file.
 
@@ -51,11 +60,23 @@ No git yet (the user is initializing git later). When code drifts from this docu
 | İşlem Hacmi      | `transaction_volume`  | BIGINT (nullable) |
 | Birim Adı        | `unit_name`           | TEXT (Kg \| Adet) |
 
-### Secondary source — city-level prices via Google
+### Secondary source — per-city hal prices
 
-- Per-city hal sites are not aggregated on hal.gov.tr.
-- Strategy: Google search for `"hal fiyatları" <şehir>` to discover per-city sources, then add a dedicated module at `apps/api/src/local_bazaar/scrapers/cities/<sehir>.py` exposing `async run(session) -> int`.
-- Discovery is a **manual, one-time step per city**; scrapers themselves do not call Google at runtime.
+Nine cities have dedicated scrapers under `apps/api/src/local_bazaar/scrapers/cities/`. Each one exposes `async run(session) -> int` and is auto-discovered by the scheduler from the `cities` table (rows with `source_type='city_site'`). All emit `ProductPrice(city_name=...)` records and persist via `upsert_prices`, which routes to the right `prices_<slug>` table. Default lookback is 160 days; days already in the per-city table are skipped, so repeat runs are cheap.
+
+| slug | source | mechanism | notes |
+|------|--------|-----------|-------|
+| `istanbul` | `tarim.ibb.istanbul/.../hal-fiyatlari.html` | AJAX `gunluk_fiyatlar.asp?tarih=YYYY-MM-DD&kategori=N` × 3 categories | midpoint of En Düşük/En Yüksek |
+| `ankara` | `ankara.bel.tr/hal-fiyatlari` | Laravel POST with CSRF token, 4 product types per date | per-row Tarih is authoritative |
+| `bursa` | `bursa.bel.tr/hal_fiyatlari` | GET `?sayfa=hal_fiyatlari&tarih=YYYY-MM-DD` (ISO format only — dd.mm.yyyy returns empty) | 9 product tabs |
+| `konya` | `konya.bel.tr/hal-fiyatlari` | GET `?tarih=YYYY-MM-DD` | Sebze + Meyve tables, ~80 dates/year |
+| `kocaeli` | `kocaeli.bel.tr/hal-fiyatlari/d-YYYY-MM-DD-h-1.html` | date encoded in path; single hall (h-1) | category Sebze/Meyve in-row |
+| `izmir` | `eislem.izmir.bel.tr/tr/HalFiyatlari/` | GET `?date=YYYY-MM-DD&tip=N` × 3 categories | source publishes `Ortalama` directly |
+| `sanliurfa` | `halfiyatlari.sanliurfa.bel.tr` | GET `?search=1&start_date=...&end_date=...&product_type_id=N` | uses DOT decimal separator, not comma |
+| `adana` | `adana.bel.tr/tr/hal-fiyat-listesi` | listing-page → detail-page (`/tr/hal-detay/<id>`); date in `<h4>` header | two-layer scraper |
+| `antalya` | `antalya.bel.tr/tr/halden-gunluk-fiyatlar` | **Playwright** — Vue 3 SPA with obfuscated AJAX endpoint | drives headless Chromium |
+
+Prices are min/max ranges on most sources; we store the midpoint as `average_price`. Where the source publishes a real average (Izmir's `Ortalama` column) we use it directly. Adding a new city: write `scrapers/cities/<slug>.py` following the same pattern, then add a row to the `cities` table in a new migration.
 
 ### Tertiary source — pazar yerleri (markets)
 
@@ -99,14 +120,16 @@ The slug helper is `db.city_slug()` — Turkish-aware ASCII folding (`İstanbul 
 ## Architecture
 
 ```
-[Next.js UI]  ──HTTP──>  [FastAPI API]  ──SQL──>  [PostgreSQL]
-                              │
-       Local dev only ────────┴── apscheduler ──> [Scrapers]
+[Browser] ──HTTP──> [Next.js web]  ──/api proxy──>  [FastAPI API]  ──SQL──> [PostgreSQL]
+                                                       │
+                                Local dev only ────────┴── apscheduler ──> [Scrapers]
 
-       In cluster: CronJob `scrape-daily` ─────> [Scrapers]
+                                In cluster: CronJob `scrape-daily` ─────> [Scrapers]
 ```
 
 - Scrapers live inside the API package and are reused by both the in-process scheduler (dev) and the CronJob (prod).
+- **The API is never reached directly by the browser.** The web service proxies same-origin `/api/*` calls to `API_INTERNAL_URL` via a Next.js `rewrites()` rule (`apps/web/next.config.mjs`). Locally the API port binds to `127.0.0.1:8000`; in Kubernetes the API Service is `ClusterIP` only and the Ingress has no `/api` rule. The internal cluster URL is `http://api:8000` (Service port matches the container port; this avoids per-environment routes-manifest rebuilds since Next.js bakes the upstream URL at build time).
+- **`/docs`, `/redoc`, `/openapi.json` are gated** by `ENABLE_API_DOCS`. Off by default; docker-compose sets it to `1` for dev, K8s leaves it unset so prod returns 404.
 
 ## Tech stack (established)
 
@@ -116,7 +139,7 @@ The slug helper is `db.city_slug()` — Turkish-aware ASCII folding (`İstanbul 
 - FastAPI + `uvicorn[standard]`, `pydantic-settings`
 - SQLModel + SQLAlchemy 2.x async, `psycopg[binary]` driver
 - Alembic for migrations (registry tables tracked; per-city `prices_*` tables created via raw DDL helpers in `db.ensure_city_table()`)
-- `httpx` + `selectolax` for scraping; `tenacity` for retries; `playwright` is an optional extra (`uv sync --extra playwright`) reserved for sites that need JS rendering
+- `httpx` + `selectolax` for scraping; `tenacity` for retries; `playwright` is installed in the production image (for the Antalya scraper, which targets a Vue SPA). Chromium is installed at `/opt/playwright-browsers` via `playwright install --with-deps chromium` in the runtime stage.
 - `apscheduler` (in-process daily job; disabled in cluster — replaced by the `scrape-daily` CronJob)
 - Quality (under `[project.optional-dependencies].dev`):
   - **ruff** (lint + format) with rule families `E F I B UP SIM ASYNC RUF D ANN`, Google docstring convention
@@ -140,7 +163,7 @@ The slug helper is `db.city_slug()` — Turkish-aware ASCII folding (`İstanbul 
 ### Infra
 
 - Docker: multi-stage per service. API uses `python:3.14-slim` + `uv`; Web uses `node:20-alpine` + `pnpm` + Next.js standalone output.
-- Kubernetes: Kustomize under `deploy/k8s/{base,overlays/{dev,prod}}` — Deployments (api, web), Services, ALB Ingress, ConfigMaps, CronJob, plus a `secrets.example.yaml` for shape (do **not** commit real Secrets).
+- Kubernetes: Kustomize under `deploy/k8s/{base,overlays/{dev,prod,local}}` — Deployments (api, web), Services, ALB Ingress, ConfigMaps, CronJob, plus a `secrets.example.yaml` for shape (do **not** commit real Secrets). The `local` overlay targets Docker Desktop k8s (no ingress controller required; web exposed via `LoadBalancer` on `localhost:8080`; `imagePullPolicy: Never` so images come from the local containerd `k8s.io` namespace — Docker Desktop's k8s does NOT share its image store with the Docker daemon, so each rebuild needs `docker save | docker exec desktop-control-plane ctr -n k8s.io images import -`).
 - AWS targets: **EKS**, **RDS PostgreSQL**, **ECR**, **ALB** via AWS Load Balancer Controller, **Secrets Manager** + External Secrets Operator.
 - Terraform skeleton for EKS / RDS / ECR / VPC / IAM is planned at `deploy/terraform/` (not yet scaffolded — add when infra work begins).
 
@@ -165,7 +188,10 @@ local_bazaar/
         env.py
         script.py.mako
         versions/
-          0001_initial_schema.py  # consolidated baseline
+          0001_initial_schema.py        # consolidated baseline
+          0002_seed_tr_geography.py     # 81 provinces + 973 districts
+          0003_widen_markets_address.py
+          0004_seed_city_scrapers.py    # 9 per-city scraper rows
       src/local_bazaar/
         __init__.py
         main.py               # FastAPI app + lifespan; mounts /api router
@@ -183,7 +209,17 @@ local_bazaar/
           base.py             # ProductPrice, http_client(), fetch_with_retry(), upsert_prices()
           hal_gov_tr.py       # national bulletin scraper (writes to prices_national)
           bazaar_locations.py # markets crawl (provinces × districts × types)
-          cities/             # per-city price scrapers (one module per city slug)
+          cities/
+            __init__.py
+            adana.py          # listing → detail two-layer scraper
+            ankara.py         # Laravel POST with CSRF
+            antalya.py        # Playwright (Vue SPA)
+            bursa.py          # GET ?tarih=YYYY-MM-DD (ISO only)
+            istanbul.py       # AJAX gunluk_fiyatlar.asp × 3 categories
+            izmir.py          # GET ?date=...&tip=N
+            kocaeli.py        # date in URL path
+            konya.py          # GET ?tarih=YYYY-MM-DD
+            sanliurfa.py      # GET form with start_date/end_date
       tests/
         conftest.py           # async DB fixture (skipped without TEST_DATABASE_URL)
         test_db_slug.py
@@ -208,31 +244,44 @@ local_bazaar/
       vitest.config.mts
       vitest.setup.ts
       Dockerfile
+      public/                       # static assets (created by Dockerfile expectation)
       src/
         app/
-          layout.tsx
-          page.tsx              # daily bulletin table (home)
-          globals.css
+          layout.tsx                # SiteHeader + main; reads ADSENSE env on the server
+          page.tsx                  # Linear-style homepage (hero + 3 animated section previews)
+          globals.css               # base styles + @keyframes for the home mockups
+          prices/page.tsx           # Hal Fiyatları daily bulletin (moved from `/`)
+          trends/page.tsx           # historical price series
           products/[name]/page.tsx  # product detail: time-series chart + stats
-          markets/page.tsx          # Google Maps view of pazar yerleri
+          markets/page.tsx          # Google Maps view of pazar yerleri + Konumumu Kullan
+          privacy/                  # privacy policy (AdSense requirement)
+          ads.txt/                  # ads.txt route for AdSense
         components/
-          Sidebar.tsx
+          SiteHeader.tsx            # sticky top nav; replaces the old Sidebar
           CitySelector.tsx
           DateSelector.tsx
           RangePresets.tsx
           PriceTable.tsx
           PriceChart.tsx
-          MarketsMap.tsx           # @vis.gl/react-google-maps wrapper
-          *.test.tsx               # vitest co-located with each component
+          MarketsMap.tsx            # @vis.gl/react-google-maps wrapper
+          AdSlot.tsx                # AdSense slot (inert when client id is empty)
+          home/                     # homepage section previews (CSS-only animations)
+            MarketsMockup.tsx
+            PricesMockup.tsx
+            TrendsMockup.tsx
+          *.test.tsx                # vitest co-located with each component
         lib/
-          api.ts                   # typed fetch client (cities, prices, history, provinces, districts, markets)
+          api.ts                    # typed fetch client; defaults to same-origin /api
           cn.ts
           format.ts
           *.test.ts
   deploy/
     k8s/
       base/                      # namespace, deployments, services, ingress, configmaps, cronjob, secrets.example
-      overlays/{dev,prod}/       # image tags + host + ACM cert per env
+      overlays/
+        dev/                     # dev hostname + ACM cert
+        prod/                    # prod hostname + ACM cert + replica overrides
+        local/                   # Docker Desktop k8s: pullPolicy: Never, LoadBalancer:8080, inline secrets (gitignored)
 ```
 
 ## Commands
@@ -248,8 +297,8 @@ docker compose up --build
 docker compose exec api alembic upgrade head
 ```
 
-- API: http://localhost:8000  (OpenAPI: `/docs`)
-- Web: http://localhost:3000
+- API: http://127.0.0.1:8000  (loopback only; OpenAPI at `/docs` because the compose env sets `ENABLE_API_DOCS=1`)
+- Web: http://localhost:3000 — browser-side `/api/*` calls are proxied by Next.js to the internal `http://api:8000`
 - Database is **not** containerized — set `DATABASE_URL` in `.env` to your RDS endpoint (or any reachable Postgres).
 
 ### Backend (`apps/api`) — standalone
@@ -259,8 +308,18 @@ cd apps/api
 uv sync --extra dev
 uv run alembic upgrade head
 uv run uvicorn local_bazaar.main:app --reload
-uv run python -m local_bazaar.scrapers.hal_gov_tr      # one-off price scrape
+uv run python -m local_bazaar.scrapers.hal_gov_tr        # national bulletin (synthetic 'national' slug)
 uv run python -m local_bazaar.scrapers.bazaar_locations  # one-off markets crawl
+# Per-city scrapers — default lookback 160 days, skips dates already in prices_<slug>
+uv run python -m local_bazaar.scrapers.cities.istanbul
+uv run python -m local_bazaar.scrapers.cities.ankara
+uv run python -m local_bazaar.scrapers.cities.izmir
+uv run python -m local_bazaar.scrapers.cities.bursa
+uv run python -m local_bazaar.scrapers.cities.konya
+uv run python -m local_bazaar.scrapers.cities.adana
+uv run python -m local_bazaar.scrapers.cities.kocaeli
+uv run python -m local_bazaar.scrapers.cities.sanliurfa
+uv run python -m local_bazaar.scrapers.cities.antalya    # needs `uv sync --extra playwright && playwright install chromium`
 # Quality gates (mirrored by .pre-commit-config.yaml)
 uv run ruff check src tests
 uv run ruff format --check src tests
@@ -298,9 +357,35 @@ Every commit then runs ruff (lint + format), flake8, pyright on the backend and 
 
 ```powershell
 docker build -t local-bazaar/api:<tag> apps/api
-docker build -t local-bazaar/web:<tag> apps/web
+docker build --build-arg NEXT_PUBLIC_GOOGLE_MAPS_API_KEY=$env:NEXT_PUBLIC_GOOGLE_MAPS_API_KEY `
+  -t local-bazaar/web:<tag> apps/web
 kubectl apply -k deploy/k8s/overlays/dev
 kubectl -n local-bazaar-dev rollout status deploy/api deploy/web
+```
+
+The web image inlines `NEXT_PUBLIC_*` env at build time (Next.js standalone bakes them into the client bundle), so pass them through `--build-arg`. The api image installs Playwright + Chromium (~150MB) for the Antalya scraper.
+
+### Local Kubernetes — Docker Desktop
+
+`deploy/k8s/overlays/local/` is the overlay for testing against the bundled Docker Desktop cluster. Docker Desktop's k8s uses containerd with the `k8s.io` namespace and does NOT see images built by the Docker daemon (which lives in the `moby` namespace) — every image rebuild must be re-imported:
+
+```powershell
+docker build -t local-bazaar/api:local apps/api
+docker build --build-arg NEXT_PUBLIC_GOOGLE_MAPS_API_KEY=$env:NEXT_PUBLIC_GOOGLE_MAPS_API_KEY `
+  -t local-bazaar/web:local apps/web
+
+# Import both into the cluster's containerd
+docker save local-bazaar/api:local | docker exec -i desktop-control-plane ctr -n k8s.io images import -
+docker save local-bazaar/web:local | docker exec -i desktop-control-plane ctr -n k8s.io images import -
+
+# First time: create deploy/k8s/overlays/local/secrets.yaml (gitignored) with real DATABASE_URL + Google Maps key.
+kubectl apply -k deploy/k8s/overlays/local
+kubectl -n local-bazaar rollout status deploy/api deploy/web
+
+# Migrate (idempotent)
+kubectl -n local-bazaar exec deploy/api -- alembic upgrade head
+
+# Web is exposed at http://localhost:8080 via LoadBalancer Service.
 ```
 
 ## Conventions
@@ -314,7 +399,7 @@ kubectl -n local-bazaar-dev rollout status deploy/api deploy/web
 - **Scrapers**: one module per source under `scrapers/`. Each exposes `async run(session) -> int`. Add new sites without touching anything outside `scrapers/` + a `cities` row.
 - **Politeness**: respect robots.txt where the user has not explicitly opted out; set `SCRAPER_USER_AGENT`; small sleep between paginated requests; retry only on network/timeout errors (`tenacity` in `scrapers/base.py`).
 - **Scheduler errors**: per-scrape errors must never crash the scheduler. `scheduler._safe_scrape()` records every attempt in `scrape_runs` with status `ok|partial|failed`.
-- **API**: read-only, no auth. CORS origins are env-driven (`API_CORS_ORIGINS`).
+- **API**: read-only, no auth. CORS origins are env-driven (`API_CORS_ORIGINS`) but are no longer load-bearing for security — the API is not exposed to the public internet (see Architecture). When adding endpoints that query per-city tables, guard against `prices_<slug>` not yet existing: use `to_regclass(:name)` or the `_existing_slugs(session, slugs)` helper in `api/prices.py`.
 - **Frontend types**: hand-maintained in `src/lib/api.ts`. When changing API shapes, update both files in the same PR. Codegen via `openapi-typescript` can be added later — there is intentionally none today.
 - **Secrets**: only in `.env` locally and AWS Secrets Manager in cluster. `deploy/k8s/base/secrets.example.yaml` shows the expected shape — never commit real values. The Google Maps key is split into two env vars: server-side `GOOGLE_MAPS_API_KEY` (used by `geocoding.py`) and browser-side `NEXT_PUBLIC_GOOGLE_MAPS_API_KEY` (used by the map widget). Restrict each in the Google Cloud Console (IP for server, HTTP referrer for browser).
 
@@ -322,21 +407,17 @@ kubectl -n local-bazaar-dev rollout status deploy/api deploy/web
 
 - Development host is **Windows 11**. Use PowerShell syntax (no `&&` chaining; use `;`).
 - Python: `pathlib.Path` only — never hard-code `\` or `/`.
-- If `playwright` is added: after `uv sync --extra playwright`, run `playwright install chromium` once.
+- Playwright is **already** in the production image (for Antalya). For host-side ad-hoc runs, `uv sync --extra playwright` then `playwright install chromium` once.
 - Docker Desktop on Windows: WSL2 backend. Keep line endings LF for files copied into Linux images — add `.gitattributes` with `* text=auto eol=lf` once git is initialized.
 
 ## What to do next
 
 1. **Initialize git** (`git init`) — natural next move. Add `.gitattributes` (`* text=auto eol=lf`) at the same time, then `pre-commit install` to wire the hooks.
-2. **Provision Google Maps**: create a Google Cloud project, enable Maps JavaScript API + Geocoding API, generate two keys (server / browser), and put them in `.env` as `GOOGLE_MAPS_API_KEY` and `NEXT_PUBLIC_GOOGLE_MAPS_API_KEY`. Without these, market lat/lng will stay null and the `/markets` page shows a "set the key" placeholder.
-3. **First `docker compose up --build`** to validate Postgres + API + Web come up green. Then `docker compose exec api uv run alembic upgrade head` to apply both migrations.
-4. **First real scrapes**:
-   - `docker compose exec api uv run python -m local_bazaar.scrapers.hal_gov_tr` — should populate `prices_national`.
-   - `docker compose exec api uv run python -m local_bazaar.scrapers.bazaar_locations` — should populate `provinces`, `districts`, `markets`. Long-running (~30–60 min for all 81 provinces).
-   - The bazaar-locations scraper has only been parser-tested; the live form may need a selector tweak on the result block (see `_parse_markets` fallback list).
-5. **Add a per-city price scraper** under `apps/api/src/local_bazaar/scrapers/cities/<slug>.py`. Register the city in the `cities` table (or via a migration) and let the scheduler pick it up.
-6. **CI/CD**: GitHub Actions workflows under `.github/workflows/` (lint, test, build images, push to ECR, `kubectl apply -k overlays/<env>`) — not yet scaffolded.
-7. **Terraform skeleton** under `deploy/terraform/` (EKS, RDS, ECR, VPC, IAM, External Secrets) — not yet scaffolded.
+2. **Provision Google Maps** if not already done: enable Maps JavaScript API + Geocoding API in GCP, generate two keys (server / browser), put them in `.env` as `GOOGLE_MAPS_API_KEY` and `NEXT_PUBLIC_GOOGLE_MAPS_API_KEY`. Without these, market lat/lng will stay null and the `/markets` page shows a "set the key" placeholder.
+3. **Backfills** are idempotent — re-running a city scraper is cheap because each one skips dates already in `prices_<slug>`. Use the per-module CLI commands listed above to seed history (160 days by default).
+4. **Add a per-city price scraper**: write `apps/api/src/local_bazaar/scrapers/cities/<slug>.py` mirroring an existing one, then add a new Alembic migration that inserts the row into `cities` (see `0004_seed_city_scrapers.py`). The scheduler auto-discovers it.
+5. **CI/CD**: GitHub Actions workflows under `.github/workflows/` (lint, test, build images, push to ECR, `kubectl apply -k overlays/<env>`) — not yet scaffolded.
+6. **Terraform skeleton** under `deploy/terraform/` (EKS, RDS, ECR, VPC, IAM, External Secrets) — not yet scaffolded.
 
 ## Out of scope (today)
 
