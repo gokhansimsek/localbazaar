@@ -60,13 +60,13 @@ URL = "https://www.ankara.bel.tr/hal-fiyatlari"
 ANKARA_CITY_NAME = "Ankara"
 
 # Internal value (form ``type``) → display label (``Ürün Türü`` column).
-# We submit one POST per type per day. The display label is what we keep in
-# ``product_category`` for now — there's no Geleneksel/Organik dimension here.
+# We submit one POST per type per day. ``fish`` is intentionally NOT fetched
+# (Meyve/Sebze platform only); ``imported`` IS kept because imported produce
+# is still in scope.
 PRODUCT_TYPES: tuple[tuple[str, str], ...] = (
     ("fruit", "Meyve"),
     ("vegetable", "Sebze"),
     ("imported", "İthal"),
-    ("fish", "Balık"),
 )
 
 # Default lookback window. Every scheduled run ensures the last `lookback_days`

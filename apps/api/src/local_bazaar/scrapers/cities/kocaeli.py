@@ -130,6 +130,8 @@ def _parse_table(html: str) -> list[dict[str, str]]:
     table = tree.css_first("table")
     if table is None:
         return []
+    # Project scope is produce only — keep these category values, drop the rest.
+    _allowed_categories = {"sebze", "meyve"}
     rows: list[dict[str, str]] = []
     for tr in table.css("tr"):
         cells = [c.text(strip=True) for c in tr.css("td")]
@@ -137,6 +139,8 @@ def _parse_table(html: str) -> list[dict[str, str]]:
             continue
         if cells[0].lower().startswith("ürün") or cells[0] == "Ürün Adı":
             continue  # header row
+        if cells[1].strip().lower() not in _allowed_categories:
+            continue  # skip Su Ürünleri / etc.
         rows.append(
             {
                 "product": cells[0],

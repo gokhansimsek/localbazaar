@@ -40,6 +40,7 @@ from selectolax.parser import HTMLParser
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from local_bazaar.products_normalize import is_fish_name
 from local_bazaar.scrapers.base import (
     ProductPrice,
     fetch_with_retry,
@@ -181,6 +182,8 @@ class HalGovTrScraper:
                 total_pages,
             )
             for row in first_rows:
+                if is_fish_name(row.get("product_name")):
+                    continue
                 yield self._row_to_price(row, bulletin_date)
 
             page = 2
@@ -206,6 +209,8 @@ class HalGovTrScraper:
                     # returned a layout we cannot parse — stop in both cases.
                     break
                 for row in rows:
+                    if is_fish_name(row.get("product_name")):
+                        continue
                     yield self._row_to_price(row, bulletin_date)
                 # Use the new response as the state seed for the next postback —
                 # __VIEWSTATE/__EVENTVALIDATION rotate on every call.

@@ -111,6 +111,9 @@ def prices_table(slug: str) -> Table:
         Column("average_price", Numeric(12, 4), nullable=False),
         Column("transaction_volume", BigInteger, nullable=True),
         Column("unit_name", Text, nullable=False),
+        # Phase 2: FK to products.id. Nullable until Phase 3 finishes
+        # migrating scrapers/API to write/read this column exclusively.
+        Column("product_id", BigInteger, nullable=True, index=True),
         Column(
             "last_updated",
             DateTime(timezone=True),
@@ -154,11 +157,20 @@ async def ensure_city_table(session: AsyncSession, slug: str) -> None:
                 average_price NUMERIC(12,4) NOT NULL,
                 transaction_volume BIGINT,
                 unit_name TEXT NOT NULL,
+                product_id BIGINT REFERENCES products(id),
                 last_updated TIMESTAMPTZ NOT NULL DEFAULT now(),
                 CONSTRAINT uq_{table.name}_bulletin_product
                     UNIQUE (bulletin_date, product_name, product_variety, product_category, unit_name)
             )
             """
+        )
+    )
+    # Defensive: an older deployment may have created the table before
+    # product_id existed. Add it idempotently.
+    await session.execute(
+        text(
+            f"ALTER TABLE {table.name} "
+            f"ADD COLUMN IF NOT EXISTS product_id BIGINT REFERENCES products(id)"
         )
     )
     await session.execute(
@@ -169,6 +181,11 @@ async def ensure_city_table(session: AsyncSession, slug: str) -> None:
     await session.execute(
         text(
             f"CREATE INDEX IF NOT EXISTS ix_{table.name}_product_name ON {table.name} (product_name)"
+        )
+    )
+    await session.execute(
+        text(
+            f"CREATE INDEX IF NOT EXISTS ix_{table.name}_product_id ON {table.name} (product_id)"
         )
     )
 

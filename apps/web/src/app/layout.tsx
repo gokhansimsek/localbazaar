@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Inter } from "next/font/google";
 import Script from "next/script";
+import { PageViewCounter } from "@/components/PageViewCounter";
 import { SiteHeader } from "@/components/SiteHeader";
 import "./globals.css";
 
@@ -51,11 +52,12 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         )}
       </head>
       <body>
-        <div className="min-h-screen">
+        <div className="flex min-h-screen flex-col">
           <SiteHeader />
-          <main className="px-6 pb-20 pt-8 lg:px-12">
+          <main className="flex-1 px-6 pt-8 lg:px-12">
             <div className="mx-auto max-w-7xl">{children}</div>
           </main>
+          <PageViewCounter />
         </div>
       </body>
     </html>

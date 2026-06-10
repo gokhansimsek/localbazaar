@@ -83,9 +83,9 @@ _STATIC_PARAMS: dict[str, str] = {
     "HalTurId": "2",
 }
 
-# Category dropdown values exposed by ``cbGunlukKategori`` on the page. We
-# iterate over all of them per day so a single bulletin captures fruit,
-# vegetable, and imported produce.
+# Category dropdown values exposed by ``cbGunlukKategori`` on the page:
+# 5 (Meyve), 6 (Sebze), 7 (İthal Ürünler). All three are in scope; fish are
+# served by a different IBB endpoint and never reach this scraper.
 _CATEGORIES: tuple[str, ...] = ("5", "6", "7")
 
 # Default lookback window. Each scheduled run ensures the last ``lookback_days``

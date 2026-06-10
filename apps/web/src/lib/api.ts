@@ -122,6 +122,34 @@ export function listMarkets(opts?: {
   return get<MarketOut[]>(`/api/markets${qs ? `?${qs}` : ""}`);
 }
 
+export type PageViewIncrement = {
+  path: string;
+  visit_count: number;
+};
+
+export type PageView = {
+  path: string;
+  visit_count: number;
+  first_visited_at: string; // ISO timestamp
+  last_visited_at: string;
+};
+
+export async function recordPageView(path: string): Promise<PageViewIncrement> {
+  const res = await fetch(`${API_BASE}/api/page-views`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ path }),
+  });
+  if (!res.ok) {
+    throw new Error(`POST /api/page-views failed: ${res.status} ${res.statusText}`);
+  }
+  return (await res.json()) as PageViewIncrement;
+}
+
+export function listPageViews(): Promise<PageView[]> {
+  return get<PageView[]>("/api/page-views");
+}
+
 export type HistoryGranularity = "daily" | "weekly" | "monthly";
 
 export function productHistory(

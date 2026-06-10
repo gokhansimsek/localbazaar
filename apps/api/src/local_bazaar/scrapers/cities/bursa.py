@@ -221,11 +221,19 @@ def _parse_tabs(html: str) -> list[dict[str, str]]:
     """
     tree = HTMLParser(html)
     labels = _tab_labels(tree)
+    # Allow Meyve, Sebze, and any "İthal" produce tabs; skip seafood tabs
+    # like "Pelajik" / "Dip" / "İç Su" / "Su Ürünleri".
+    _allowed_categories = {"Meyve", "Sebze"}
+    _allowed_substrings = ("İthal", "ithal", "i̇thal")
 
     rows: list[dict[str, str]] = []
     for pane in tree.css("div.tab-pane"):
         pane_id = pane.attributes.get("id") or ""
         category = labels.get(pane_id, "")
+        if category not in _allowed_categories and not any(
+            s in category for s in _allowed_substrings
+        ):
+            continue
         table = pane.css_first("table#datatable")
         if table is None:
             continue
