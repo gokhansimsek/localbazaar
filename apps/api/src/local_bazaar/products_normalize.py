@@ -567,4 +567,105 @@ def is_fish_name(name: str | None) -> bool:
     return any(s in lower for s in _FISH_SUBSTRINGS)
 
 
-__all__ = ["is_fish_name", "normalize"]
+# --- Unit canonicalization ---------------------------------------------------
+#
+# The source data uses ~20 different spellings for the same handful of units:
+# ``Kg``/``kg``/``KG``/``Kğ`` / ``Adet``/``adet``/``Ad`` / ``Bağ``/``bağ``/``BAĞ`` /
+# ``Demet``/``demet``/``(Demet)`` / ``Paket``/``Koli``/``Kasa``/``Çuval``/``Sandık``.
+# :func:`normalize_unit` collapses them to a canonical title-cased form and
+# strips surrounding parens. Unrecognized inputs pass through with only
+# whitespace and surrounding parens cleaned, so packaging tokens like
+# ``Pk/125 G`` (Antalya) survive.
+
+_UNIT_SYNONYMS: dict[str, str] = {
+    "kg": "Kg",
+    "kg.": "Kg",
+    "kğ": "Kg",
+    "kgs": "Kg",
+    "adet": "Adet",
+    "ad": "Adet",
+    "ad.": "Adet",
+    "bağ": "Bağ",
+    "demet": "Demet",
+    "paket": "Paket",
+    "koli": "Koli",
+    "kasa": "Kasa",
+    "çuval": "Çuval",
+    "sandık": "Sandık",
+}
+
+
+def normalize_unit(raw: str | None) -> str:
+    """Canonicalize a unit string from any scraper.
+
+    The default for empty input is ``Kg`` since that's the dominant unit in
+    every source we ingest.
+
+    Args:
+        raw: Source ``unit_name`` (any case, possibly parenthesised).
+
+    Returns:
+        A canonical title-cased unit. Unknown inputs pass through with
+        whitespace and surrounding ``( … )`` removed.
+    """
+    if not raw:
+        return "Kg"
+    s = raw.strip()
+    if not s:
+        return "Kg"
+    if s.startswith("(") and s.endswith(")"):
+        s = s[1:-1].strip()
+    lower = _tr_lower(s)
+    # Drop a "taze " (= "fresh ") prefix that some sources stamp onto units.
+    lower = re.sub(r"^taze\s+", "", lower)
+    if lower in _UNIT_SYNONYMS:
+        return _UNIT_SYNONYMS[lower]
+    # Unknown — return cleaned input as-is, preserving original casing for
+    # packaging tokens like "Pk/125 G".
+    return s
+
+
+# --- Category canonicalization ----------------------------------------------
+#
+# Only the three quality grades published by hal.gov.tr's national bulletin
+# are accepted as ``category`` values. Per-city scrapers write category-like
+# strings into the same slot (Bursa tab labels "Meyve"/"Sebze", Ankara
+# "İthal", or simply leave it NULL); we collapse all of those to
+# ``Geleneksel(Konvansiyonel)`` so the taxonomy stays consistent across
+# every source.
+
+_VALID_CATEGORIES: frozenset[str] = frozenset(
+    {
+        "Geleneksel(Konvansiyonel)",
+        "İyi Tarım",
+        "Organik Tarım",
+        "İthal",
+    }
+)
+
+_DEFAULT_CATEGORY = "Geleneksel(Konvansiyonel)"
+
+
+def normalize_category(raw: str | None) -> str:
+    """Canonicalize a category value to one of the four accepted grades.
+
+    Args:
+        raw: Source ``product_category`` value, ``None``, or empty string.
+
+    Returns:
+        One of :data:`_VALID_CATEGORIES`. Anything not on the allow-list —
+        including ``Meyve``, ``Sebze``, and ``NULL`` — collapses to
+        :data:`_DEFAULT_CATEGORY` (``"Geleneksel(Konvansiyonel)"``). The
+        legitimate ``İthal`` value is preserved.
+    """
+    if raw is None:
+        return _DEFAULT_CATEGORY
+    cleaned = raw.strip()
+    if not cleaned:
+        return _DEFAULT_CATEGORY
+    if cleaned in _VALID_CATEGORIES:
+        return cleaned
+    return _DEFAULT_CATEGORY
+
+
+__all__ = ["is_fish_name", "normalize", "normalize_category", "normalize_unit"]

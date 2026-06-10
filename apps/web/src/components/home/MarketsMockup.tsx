@@ -1,16 +1,18 @@
-const PINS: { left: string; top: string; delay: string }[] = [
-  { left: "16%", top: "58%", delay: "0s" },
-  { left: "26%", top: "38%", delay: "0.6s" },
-  { left: "38%", top: "52%", delay: "1.2s" },
-  { left: "48%", top: "34%", delay: "0.3s" },
-  { left: "58%", top: "60%", delay: "1.8s" },
-  { left: "68%", top: "44%", delay: "0.9s" },
-  { left: "78%", top: "58%", delay: "2.1s" },
-  { left: "84%", top: "30%", delay: "1.5s" },
+const PINS: { left: string; top: string }[] = [
+  { left: "14%", top: "62%" },
+  { left: "23%", top: "36%" },
+  { left: "34%", top: "54%" },
+  { left: "44%", top: "40%" },
+  { left: "56%", top: "62%" },
+  { left: "66%", top: "44%" },
+  { left: "76%", top: "58%" },
+  { left: "86%", top: "32%" },
 ];
 
-const TOOLTIP_X = "48%";
-const TOOLTIP_Y = "34%";
+// Tooltip anchor sits between pin 4 and pin 5 so it never overlaps a pin's
+// solid dot. The triangle pointer below the card points down at this y.
+const TOOLTIP_X = "50%";
+const TOOLTIP_Y = "20%";
 
 export function MarketsMockup() {
   return (
@@ -38,27 +40,36 @@ export function MarketsMockup() {
         </g>
       </svg>
 
-      <div className="pointer-events-none absolute inset-y-0 -left-1/3 w-1/3 bg-[linear-gradient(90deg,transparent_0%,rgba(99,91,255,0.08)_50%,transparent_100%)] motion-safe:animate-[mapScan_6s_ease-in-out_infinite]" />
+      <div className="pointer-events-none absolute inset-y-0 -left-1/3 w-1/3 bg-[linear-gradient(90deg,transparent_0%,rgba(99,91,255,0.10)_50%,transparent_100%)] motion-safe:animate-[mapScan_7s_ease-in-out_infinite]" />
 
-      {PINS.map((p, i) => (
-        <span
-          key={i}
-          className="absolute"
-          style={{ left: p.left, top: p.top, transform: "translate(-50%,-100%)" }}
-        >
-          <span className="relative block">
-            <span
-              className="absolute left-1/2 top-1/2 h-2.5 w-2.5 -translate-x-1/2 -translate-y-1/2 rounded-full bg-indigo-500/40 motion-safe:animate-[mapPulse_2.6s_ease-out_infinite]"
-              style={{ animationDelay: p.delay }}
-            />
-            <span className="relative block h-2 w-2 rounded-full bg-indigo-500 shadow-[0_0_0_2px_white]" />
+      {PINS.map((p, i) => {
+        // Deterministic staggered delays — 0s, 0.35s, 0.7s, … so the pulse
+        // and dot-breath stay in sync per pin but ripple across the grid.
+        const pulseDelay = `${(i * 0.35).toFixed(2)}s`;
+        const dotDelay = `${(i * 0.45).toFixed(2)}s`;
+        return (
+          <span
+            key={i}
+            className="absolute"
+            style={{ left: p.left, top: p.top, transform: "translate(-50%,-100%)" }}
+          >
+            <span className="relative block">
+              <span
+                className="absolute left-1/2 top-1/2 h-2.5 w-2.5 -translate-x-1/2 -translate-y-1/2 rounded-full bg-indigo-500/40 motion-safe:animate-[mapPulse_2.8s_ease-out_infinite]"
+                style={{ animationDelay: pulseDelay }}
+              />
+              <span
+                className="relative block h-2 w-2 rounded-full bg-indigo-500 shadow-[0_0_0_2px_white] motion-safe:animate-[mapDotPulse_2.8s_ease-in-out_infinite]"
+                style={{ animationDelay: dotDelay }}
+              />
+            </span>
           </span>
-        </span>
-      ))}
+        );
+      })}
 
       <div
         className="absolute z-10 motion-safe:animate-[tooltipFloat_4.5s_ease-in-out_infinite]"
-        style={{ left: TOOLTIP_X, top: TOOLTIP_Y, transform: "translate(-50%, -140%)" }}
+        style={{ left: TOOLTIP_X, top: TOOLTIP_Y, transform: "translate(-50%, 0)" }}
       >
         <div className="rounded-lg border border-surface-border bg-white px-3 py-2 text-left shadow-soft">
           <div className="text-[11px] font-semibold text-ink">Kadıköy Salı Pazarı</div>
@@ -73,7 +84,7 @@ export function MarketsMockup() {
 
       <div className="absolute bottom-3 left-3 flex items-center gap-2 rounded-full border border-surface-border bg-white/85 px-2.5 py-1 text-[10px] font-medium text-ink-muted backdrop-blur">
         <span className="h-1.5 w-1.5 rounded-full bg-indigo-500" />
-        {PINS.length * 1180} pazar · 81 il
+        9.440 pazar · 81 il
       </div>
     </div>
   );

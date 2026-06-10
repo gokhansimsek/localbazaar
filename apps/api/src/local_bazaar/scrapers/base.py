@@ -26,7 +26,7 @@ from tenacity import (
 
 from local_bazaar.config import settings
 from local_bazaar.db import city_slug, ensure_city_table, prices_table_name
-from local_bazaar.products_normalize import normalize
+from local_bazaar.products_normalize import normalize, normalize_category, normalize_unit
 
 log = logging.getLogger(__name__)
 
@@ -123,8 +123,8 @@ async def _resolve_product_id(
         The ``products.id`` for the normalized tuple.
     """
     name, variety = normalize(raw_name, raw_variety)
-    category = (raw_category or "").strip() or None
-    unit = raw_unit.strip()
+    category = normalize_category(raw_category)
+    unit = normalize_unit(raw_unit)
     res = await session.execute(
         text(
             """
