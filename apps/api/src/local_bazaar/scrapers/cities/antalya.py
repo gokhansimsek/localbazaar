@@ -162,15 +162,21 @@ class AntalyaScraper:
 def _parse_table(html: str) -> list[dict[str, str]]:
     """Extract product rows from the hydrated ``haldengunlukfiyatlartable``.
 
+    The Vue template binds five ``<td>`` cells per row in document order:
+
+    1. an ``<img>`` thumbnail (hidden, empty text)
+    2. product name (``{{item.urun_adi}}``)
+    3. lowest price (``{{item.en_dusuk_fiyat}}``)
+    4. highest price (``{{item.en_yuksek_fiyat}}``)
+    5. unit (``{{item.birim_adi_combobox.birim_adi}}``)
+
+    Rows without the full 5-cell layout are skipped.
+
     Args:
         html: Fully-rendered page HTML (after Vue hydration).
 
     Returns:
-        A list of dicts keyed by the column the source publishes. The page's
-        Vue template binds 4 cells per row in document order: product name,
-        unit, lowest price, highest price. (The dropdown filter offers an
-        average price view too, but the default response is the min/max
-        bracket which we average.)
+        A list of dicts with keys product, unit, low, high.
     """
     tree = HTMLParser(html)
     table = tree.css_first(_TABLE_SELECTOR)
@@ -179,12 +185,15 @@ def _parse_table(html: str) -> list[dict[str, str]]:
     rows: list[dict[str, str]] = []
     for tr in table.css("tbody tr"):
         cells = [c.text(strip=True) for c in tr.css("td")]
-        if len(cells) < 4:
+        if len(cells) < 5:
+            continue
+        product = cells[1].strip()
+        if not product:
             continue
         rows.append(
             {
-                "product": cells[0],
-                "unit": cells[1],
+                "product": product,
+                "unit": cells[4].strip(),
                 "low": cells[2],
                 "high": cells[3],
             }

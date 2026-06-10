@@ -15,12 +15,11 @@ from typing import Literal
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 from sqlalchemy import bindparam as sa_bindparam
-from sqlalchemy import select as sa_select
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import col, select
 
-from local_bazaar.db import get_session, prices_table, prices_table_name
+from local_bazaar.db import get_session, prices_table_name
 from local_bazaar.models import City
 
 Granularity = Literal["daily", "weekly", "monthly"]
@@ -53,10 +52,12 @@ async def _existing_slugs(session: AsyncSession, slugs: list[str]) -> list[str]:
     if not slugs:
         return []
     table_names = [prices_table_name(s) for s in slugs]
+    # ``expanding=True`` makes SQLAlchemy emit per-element bind params, which
+    # works with ``IN (...)`` but breaks ``ANY(:array)``. Use ``IN`` here.
     result = await session.execute(
         text(
             "SELECT table_name FROM information_schema.tables "
-            "WHERE table_schema = current_schema() AND table_name = ANY(:names)"
+            "WHERE table_schema = current_schema() AND table_name IN :names"
         ).bindparams(sa_bindparam("names", value=table_names, expanding=True))
     )
     present = {row[0] for row in result.all()}
@@ -177,30 +178,36 @@ async def city_prices(
     if exists is None:
         return []
 
-    table = prices_table(slug)
-    stmt = sa_select(
-        table.c.bulletin_date,
-        table.c.product_name,
-        table.c.product_variety,
-        table.c.product_category,
-        table.c.average_price,
-        table.c.transaction_volume,
-        table.c.unit_name,
-    )
-    if bulletin_date is not None:
-        stmt = stmt.where(table.c.bulletin_date == bulletin_date)
-    else:
-        # Latest bulletin date for this city.
+    if bulletin_date is None:
         latest = await session.execute(
             text(f"SELECT MAX(bulletin_date) FROM {table_name}")
         )
-        latest_date = latest.scalar()
-        if latest_date is None:
+        bulletin_date = latest.scalar()
+        if bulletin_date is None:
             return []
-        stmt = stmt.where(table.c.bulletin_date == latest_date)
 
-    stmt = stmt.order_by(table.c.product_name, table.c.product_variety, table.c.product_category)
-    rows = (await session.execute(stmt)).mappings().all()
+    # Phase 3 schema: textual product fields come from the products registry
+    # via a JOIN on product_id. The wire format is unchanged.
+    rows = (
+        await session.execute(
+            text(
+                f"""
+                SELECT pn.bulletin_date,
+                       p.name AS product_name,
+                       p.variety AS product_variety,
+                       p.category AS product_category,
+                       pn.average_price,
+                       pn.transaction_volume,
+                       p.unit_name
+                FROM {table_name} pn
+                JOIN products p ON p.id = pn.product_id
+                WHERE pn.bulletin_date = :d
+                ORDER BY p.name, p.variety, p.category
+                """
+            ),
+            {"d": bulletin_date},
+        )
+    ).mappings().all()
     return [PriceRow(**row) for row in rows]
 
 
@@ -229,16 +236,22 @@ async def list_products(
     if not slugs:
         return []
 
-    # SELECT DISTINCT ON keeps the latest row per product across the union.
+    # Phase 3: textual fields come from the products registry. We UNION ALL
+    # the (product_id, date, price) tuples across the requested cities, JOIN
+    # each to products, then keep the latest row per product name.
     union_sql = "\nUNION ALL\n".join(
-        f"SELECT product_name, unit_name, bulletin_date, average_price FROM {prices_table_name(s)}"
+        f"SELECT product_id, bulletin_date, average_price FROM {prices_table_name(s)}"
         for s in slugs
     )
     sql = f"""
-        SELECT DISTINCT ON (product_name) product_name, unit_name, bulletin_date,
-                                          average_price
+        SELECT DISTINCT ON (p.name)
+            p.name AS product_name,
+            p.unit_name,
+            src.bulletin_date,
+            src.average_price
         FROM ({union_sql}) src
-        ORDER BY product_name, bulletin_date DESC
+        JOIN products p ON p.id = src.product_id
+        ORDER BY p.name, src.bulletin_date DESC
     """
     rows = (await session.execute(text(sql))).mappings().all()
     return [
@@ -296,36 +309,42 @@ async def product_history(
     if not slugs:
         return []
 
-    where_clauses = ["product_name = :name"]
+    date_clauses: list[str] = []
     params: dict[str, object] = {"name": name}
     if date_from is not None:
-        where_clauses.append("bulletin_date >= :date_from")
+        date_clauses.append("pn.bulletin_date >= :date_from")
         params["date_from"] = date_from
     if date_to is not None:
-        where_clauses.append("bulletin_date <= :date_to")
+        date_clauses.append("pn.bulletin_date <= :date_to")
         params["date_to"] = date_to
-    where_sql = " AND ".join(where_clauses)
+    date_where = (" AND " + " AND ".join(date_clauses)) if date_clauses else ""
 
     if granularity == "daily":
+        # Phase 3: every per-city UNION arm joins prices_<slug> with products
+        # on product_id, filtering by the canonical product name.
         union_sql = "\nUNION ALL\n".join(
-            f"SELECT '{s}'::text AS city_slug, bulletin_date, product_variety, "
-            f"product_category, average_price, unit_name "
-            f"FROM {prices_table_name(s)} WHERE {where_sql}"
+            f"SELECT '{s}'::text AS city_slug, pn.bulletin_date, "
+            f"p.variety AS product_variety, p.category AS product_category, "
+            f"pn.average_price, p.unit_name "
+            f"FROM {prices_table_name(s)} pn "
+            f"JOIN products p ON p.id = pn.product_id "
+            f"WHERE p.name = :name{date_where}"
             for s in slugs
         )
     else:
         unit = _TRUNC_UNIT[granularity]
-        # Aggregate per (city, bucket, variety, category). Bucket start lands in
-        # ``bulletin_date``. ``AVG`` is cast back to numeric(12,4) so the wire
-        # value keeps the same precision as raw rows.
+        # Bucket per (city, week|month, variety, category). AVG cast back to
+        # numeric(12,4) preserves wire precision.
         union_sql = "\nUNION ALL\n".join(
             f"SELECT '{s}'::text AS city_slug, "
-            f"date_trunc('{unit}', bulletin_date)::date AS bulletin_date, "
-            f"product_variety, product_category, "
-            f"AVG(average_price)::numeric(12,4) AS average_price, "
-            f"MAX(unit_name) AS unit_name "
-            f"FROM {prices_table_name(s)} WHERE {where_sql} "
-            f"GROUP BY date_trunc('{unit}', bulletin_date), product_variety, product_category"
+            f"date_trunc('{unit}', pn.bulletin_date)::date AS bulletin_date, "
+            f"p.variety AS product_variety, p.category AS product_category, "
+            f"AVG(pn.average_price)::numeric(12,4) AS average_price, "
+            f"MAX(p.unit_name) AS unit_name "
+            f"FROM {prices_table_name(s)} pn "
+            f"JOIN products p ON p.id = pn.product_id "
+            f"WHERE p.name = :name{date_where} "
+            f"GROUP BY date_trunc('{unit}', pn.bulletin_date), p.variety, p.category"
             for s in slugs
         )
 

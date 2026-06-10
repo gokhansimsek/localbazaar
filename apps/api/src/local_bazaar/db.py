@@ -21,7 +21,6 @@ from sqlalchemy import (
     MetaData,
     Numeric,
     Table,
-    Text,
     UniqueConstraint,
     func,
     text,
@@ -105,15 +104,9 @@ def prices_table(slug: str) -> Table:
         metadata,
         Column("id", BigInteger, primary_key=True, autoincrement=True),
         Column("bulletin_date", Date, nullable=False, index=True),
-        Column("product_name", Text, nullable=False, index=True),
-        Column("product_variety", Text, nullable=True),
-        Column("product_category", Text, nullable=True),
+        Column("product_id", BigInteger, nullable=False, index=True),
         Column("average_price", Numeric(12, 4), nullable=False),
         Column("transaction_volume", BigInteger, nullable=True),
-        Column("unit_name", Text, nullable=False),
-        # Phase 2: FK to products.id. Nullable until Phase 3 finishes
-        # migrating scrapers/API to write/read this column exclusively.
-        Column("product_id", BigInteger, nullable=True, index=True),
         Column(
             "last_updated",
             DateTime(timezone=True),
@@ -122,11 +115,8 @@ def prices_table(slug: str) -> Table:
         ),
         UniqueConstraint(
             "bulletin_date",
-            "product_name",
-            "product_variety",
-            "product_category",
-            "unit_name",
-            name=f"uq_{name}_bulletin_product",
+            "product_id",
+            name=f"uq_{name}_bulletin_product_id",
         ),
     )
 
@@ -145,47 +135,35 @@ async def ensure_city_table(session: AsyncSession, slug: str) -> None:
         slug: The city slug to provision a table for.
     """
     table = prices_table(slug)
+    # Phase 3 schema: prices reference ``products(id)`` and carry no copy of
+    # the textual product fields. The legacy ``product_name`` / ``variety`` /
+    # ``category`` / ``unit_name`` columns were dropped by migration 0009.
     await session.execute(
         text(
             f"""
             CREATE TABLE IF NOT EXISTS {table.name} (
                 id BIGSERIAL PRIMARY KEY,
                 bulletin_date DATE NOT NULL,
-                product_name TEXT NOT NULL,
-                product_variety TEXT,
-                product_category TEXT,
+                product_id BIGINT NOT NULL REFERENCES products(id),
                 average_price NUMERIC(12,4) NOT NULL,
                 transaction_volume BIGINT,
-                unit_name TEXT NOT NULL,
-                product_id BIGINT REFERENCES products(id),
                 last_updated TIMESTAMPTZ NOT NULL DEFAULT now(),
-                CONSTRAINT uq_{table.name}_bulletin_product
-                    UNIQUE (bulletin_date, product_name, product_variety, product_category, unit_name)
+                CONSTRAINT uq_{table.name}_bulletin_product_id
+                    UNIQUE (bulletin_date, product_id)
             )
             """
         )
     )
-    # Defensive: an older deployment may have created the table before
-    # product_id existed. Add it idempotently.
     await session.execute(
         text(
-            f"ALTER TABLE {table.name} "
-            f"ADD COLUMN IF NOT EXISTS product_id BIGINT REFERENCES products(id)"
+            f"CREATE INDEX IF NOT EXISTS ix_{table.name}_bulletin_date "
+            f"ON {table.name} (bulletin_date)"
         )
     )
     await session.execute(
         text(
-            f"CREATE INDEX IF NOT EXISTS ix_{table.name}_bulletin_date ON {table.name} (bulletin_date)"
-        )
-    )
-    await session.execute(
-        text(
-            f"CREATE INDEX IF NOT EXISTS ix_{table.name}_product_name ON {table.name} (product_name)"
-        )
-    )
-    await session.execute(
-        text(
-            f"CREATE INDEX IF NOT EXISTS ix_{table.name}_product_id ON {table.name} (product_id)"
+            f"CREATE INDEX IF NOT EXISTS ix_{table.name}_product_id "
+            f"ON {table.name} (product_id)"
         )
     )
 
