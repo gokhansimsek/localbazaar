@@ -13,12 +13,12 @@ export default function HomePage() {
         <div className="mx-auto max-w-3xl text-center">
           <h1 className="font-display text-[44px] font-semibold leading-[1.02] tracking-[-0.045em] text-ink sm:text-6xl lg:text-[80px]">
             Türkiye&apos;nin{" "}
-            <span className="italic font-normal text-ink-soft">semt pazarları</span>{" "}
-            ve hal fiyatları, tek adreste.
+            <span className="font-normal italic text-ink-soft">semt pazarları</span> ve hal
+            fiyatları, tek adreste.
           </h1>
           <p className="mx-auto mt-7 max-w-xl text-[15px] leading-[1.65] text-ink-soft">
-            81 il, binlerce mahalle pazarı ve ürünlerin günlük fiyatları. Haritada
-            keşfedin, fiyatları izleyin, trendleri okuyun.
+            81 il, binlerce mahalle pazarı ve ürünlerin günlük fiyatları. Haritada keşfedin,
+            fiyatları izleyin, trendleri okuyun.
           </p>
           <div className="mt-9 flex flex-wrap items-center justify-center gap-3">
             <Link href="/markets" className="btn-primary">
@@ -34,13 +34,7 @@ export default function HomePage() {
 
       <FeatureSection
         eyebrow="Pazarlar"
-        title={
-          <>
-            Her semt pazarı,
-            <br />
-            <span className="italic font-normal text-ink-soft">haritada.</span>
-          </>
-        }
+        title="Her semt pazarı, haritada"
         copy="81 ilin 970 ilçesindeki tüm semt ve üretici pazarları coğrafyaya yerleştirildi. Konumunuzu paylaşın, yakındaki pazarları gün ve türe göre filtreleyin."
         href="/markets"
         cta="Pazarları aç"
@@ -59,19 +53,12 @@ export default function HomePage() {
 
       <FeatureSection
         eyebrow="Trendler"
-        title={
-          <>
-            Tarihsel seri,
-            <br />
-            <span className="italic font-normal text-ink-soft">anlamlı bir hikaye.</span>
-          </>
-        }
+        title="Tarihsel seri"
         copy="Günlük, haftalık veya aylık birikim. Ürün bazlı çizgi grafikleri, yüzde değişim okumaları ve mevsimsellik kalıpları."
         href="/trends"
         cta="Trendleri incele"
         mockup={<TrendsMockup />}
       />
-
     </div>
   );
 }
