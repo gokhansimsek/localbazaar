@@ -22,7 +22,16 @@ type Props = {
    * Missing slugs fall back to the slug itself.
    */
   cityNames?: Record<string, string>;
+  /**
+   * Optional set of series keys to render. When provided, only series whose
+   * key is in the set are drawn (the rest are filtered out by the page's
+   * multiselect). When omitted, every series is shown.
+   */
+  visibleKeys?: Set<string>;
 };
+
+/** One distinct chart line: a (city × category × variety) combination. */
+export type Series = { key: string; label: string };
 
 const SERIES_COLORS = [
   "#635BFF", // indigo (brand)
@@ -36,8 +45,6 @@ const SERIES_COLORS = [
   "#06B6D4", // cyan
   "#F97316", // orange
 ];
-
-type Series = { key: string; label: string };
 
 type DotProps = {
   cx?: number;
@@ -85,14 +92,10 @@ function pivot(
   rows: Array<Record<string, number | string>>;
   series: Series[];
 } {
-  const seriesByKey = new Map<string, Series>();
   const byDate = new Map<string, Record<string, number | string>>();
 
   for (const p of points) {
     const key = seriesKey(p);
-    if (!seriesByKey.has(key)) {
-      seriesByKey.set(key, { key, label: seriesLabel(p, cityNames, points) });
-    }
     const r = byDate.get(p.bulletin_date) ?? { bulletin_date: p.bulletin_date };
     r[key] = Number(p.average_price);
     // Track whether this cell is a real observation (1) or a regression-filled
@@ -104,12 +107,26 @@ function pivot(
   const rows = Array.from(byDate.values()).sort((a, b) =>
     String(a.bulletin_date).localeCompare(String(b.bulletin_date)),
   );
-  const series = Array.from(seriesByKey.values()).sort((a, b) => a.label.localeCompare(b.label));
-  return { rows, series };
+  return { rows, series: listSeries(points, cityNames) };
 }
 
-function seriesKey(p: HistoryPoint): string {
+/** Stable key identifying a chart series: city × category × variety. */
+export function seriesKey(p: HistoryPoint): string {
   return [p.city_slug, p.product_category ?? "", p.product_variety ?? ""].join("|");
+}
+
+/**
+ * Build the distinct, label-sorted list of series present in ``points``. Shared
+ * by the chart (to draw lines) and the trends page (to populate the series
+ * multiselect) so keys and labels always match.
+ */
+export function listSeries(points: HistoryPoint[], cityNames?: Record<string, string>): Series[] {
+  const byKey = new Map<string, Series>();
+  for (const p of points) {
+    const key = seriesKey(p);
+    if (!byKey.has(key)) byKey.set(key, { key, label: seriesLabel(p, cityNames, points) });
+  }
+  return Array.from(byKey.values()).sort((a, b) => a.label.localeCompare(b.label));
 }
 
 /**
@@ -142,7 +159,7 @@ function seriesLabel(
   return parts.length > 0 ? parts.join(" · ") : (cityNames?.[p.city_slug] ?? p.city_slug);
 }
 
-export function PriceChart({ points, cityNames }: Props) {
+export function PriceChart({ points, cityNames, visibleKeys }: Props) {
   const { rows, series } = useMemo(() => pivot(points, cityNames), [points, cityNames]);
 
   if (rows.length === 0) {
@@ -186,25 +203,27 @@ export function PriceChart({ points, cityNames }: Props) {
               iconType="circle"
               wrapperStyle={{ fontSize: 12, paddingTop: 8, color: "#425466" }}
             />
-            {series.map((s, i) => (
-              <Line
-                key={s.key}
-                type="monotone"
-                dataKey={s.key}
-                name={s.label}
-                stroke={SERIES_COLORS[i % SERIES_COLORS.length]}
-                strokeWidth={2}
-                dot={
-                  ((props: DotProps) =>
-                    renderDot(
-                      props,
-                      s.key,
-                      SERIES_COLORS[i % SERIES_COLORS.length],
-                    )) as unknown as LineProps["dot"]
-                }
-                activeDot={{ r: 4 }}
-              />
-            ))}
+            {series.map((s, i) => {
+              // Keep color keyed to the full series index so a series keeps its
+              // color regardless of which others are filtered out.
+              if (visibleKeys && !visibleKeys.has(s.key)) return null;
+              const color = SERIES_COLORS[i % SERIES_COLORS.length];
+              return (
+                <Line
+                  key={s.key}
+                  type="monotone"
+                  dataKey={s.key}
+                  name={s.label}
+                  stroke={color}
+                  strokeWidth={2}
+                  dot={
+                    ((props: DotProps) =>
+                      renderDot(props, s.key, color)) as unknown as LineProps["dot"]
+                  }
+                  activeDot={{ r: 4 }}
+                />
+              );
+            })}
           </LineChart>
         </ResponsiveContainer>
       </div>

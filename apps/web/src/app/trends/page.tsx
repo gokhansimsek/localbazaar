@@ -3,7 +3,8 @@
 import { useEffect, useMemo, useState } from "react";
 import { TrendingDown, TrendingUp } from "lucide-react";
 import { AdSlot } from "@/components/AdSlot";
-import { PriceChart } from "@/components/PriceChart";
+import { MultiSelect } from "@/components/MultiSelect";
+import { PriceChart, listSeries } from "@/components/PriceChart";
 import { ProductPicker } from "@/components/ProductPicker";
 import {
   listCities,
@@ -56,6 +57,8 @@ export default function TrendsPage() {
   const [loading, setLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
   const [activeRangeKey, setActiveRangeKey] = useState<string>(DEFAULT_RANGE_KEY);
+  // Series the user wants drawn (keys of city × category × variety lines).
+  const [visibleKeys, setVisibleKeys] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     listProducts()
@@ -108,6 +111,18 @@ export default function TrendsPage() {
   const buckets = useMemo(() => computeBuckets(dailyPoints), [dailyPoints]);
   const summary = products.find((p) => p.product_name === selected);
 
+  // The distinct series available for the current product/range, used to build
+  // the multiselect options.
+  const chartSeries = useMemo(() => listSeries(chartPoints, cityNames), [chartPoints, cityNames]);
+
+  // Reset the filter to "none selected" whenever the available series change
+  // (e.g. a different product is picked), so the user opts into the halls they
+  // want. Keyed on the joined keys so it only fires on a real change.
+  const seriesSig = chartSeries.map((s) => s.key).join("|");
+  useEffect(() => {
+    setVisibleKeys(new Set());
+  }, [seriesSig]);
+
   return (
     <div className="space-y-8">
       <header className="space-y-2">
@@ -121,6 +136,15 @@ export default function TrendsPage() {
 
       <section className="flex flex-col gap-4 lg:flex-row lg:items-end">
         <ProductPicker products={products} value={selected} onChange={setSelected} />
+        {chartSeries.length > 0 && (
+          <MultiSelect
+            label="Hal"
+            className="w-full lg:w-64"
+            options={chartSeries.map((s) => ({ value: s.key, label: s.label }))}
+            selected={visibleKeys}
+            onChange={setVisibleKeys}
+          />
+        )}
         {summary && (
           <div className="text-xs text-ink-muted">
             Birim: <span className="font-medium text-ink">{summary.unit_name}</span> · Son bülten:{" "}
@@ -161,11 +185,17 @@ export default function TrendsPage() {
                 Tarihsel seri · <span className="text-ink">{activeRange.label}</span>
               </span>
               <span className="text-[11px] uppercase tracking-wide text-ink-faint">
-                {granularityLabel(activeRange.granularity)} · eksik noktalar regresyonla
+                {granularityLabel(activeRange.granularity)} · eksik noktalar otomatik olarak
                 doldurulmuştur
               </span>
             </h2>
-            <PriceChart points={chartPoints} cityNames={cityNames} />
+            {visibleKeys.size === 0 ? (
+              <div className="card flex h-72 items-center justify-center text-center text-sm text-ink-muted">
+                Grafiği görüntülemek için yukarıdan en az bir hal seçin.
+              </div>
+            ) : (
+              <PriceChart points={chartPoints} cityNames={cityNames} visibleKeys={visibleKeys} />
+            )}
           </section>
 
           {process.env.NEXT_PUBLIC_ADSENSE_TRENDS_SLOT ? (
