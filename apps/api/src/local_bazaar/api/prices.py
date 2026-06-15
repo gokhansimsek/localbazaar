@@ -8,7 +8,7 @@ Endpoints:
 
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, timedelta
 from decimal import Decimal
 from typing import Literal
 
@@ -102,6 +102,9 @@ class HistoryPoint(BaseModel):
     product_category: str | None
     average_price: Decimal
     unit_name: str
+    interpolated: bool = False
+    """``True`` when this point was synthesized by regression to fill a gap,
+    rather than read from a real bulletin row."""
 
 
 class ProductOut(BaseModel):
@@ -111,6 +114,150 @@ class ProductOut(BaseModel):
     unit_name: str
     latest_bulletin_date: date
     latest_average_price: Decimal
+
+
+# --- Regression gap-fill -----------------------------------------------------
+#
+# The trends chart wants a continuous line across the selected range even though
+# the sources publish irregularly (weekends, holidays, sparse municipal feeds).
+# Rather than piecewise-linear interpolation, we fit an ordinary least-squares
+# line per series (city × variety × category × unit) over its real observations
+# and predict the missing buckets. Real points are kept verbatim; only gaps are
+# synthesized, and each synthesized point carries ``interpolated=True``.
+
+_FOUR_DP = Decimal("0.0001")
+
+
+def _bucket_sequence(lo: date, hi: date, granularity: Granularity) -> list[date]:
+    """Enumerate every bucket-start date in ``[lo, hi]`` at ``granularity``.
+
+    Buckets align with PostgreSQL ``date_trunc`` so they match the dates the
+    weekly/monthly aggregation query already emits: weekly snaps to the Monday
+    of the ISO week, monthly to the first of the month, daily is every day.
+
+    Args:
+        lo: Inclusive lower bound.
+        hi: Inclusive upper bound.
+        granularity: ``"daily"``, ``"weekly"``, or ``"monthly"``.
+
+    Returns:
+        Ascending list of bucket-start dates. Empty when ``hi < lo``.
+    """
+    if hi < lo:
+        return []
+    out: list[date] = []
+    if granularity == "daily":
+        cur = lo
+        while cur <= hi:
+            out.append(cur)
+            cur += timedelta(days=1)
+        return out
+    if granularity == "weekly":
+        cur = lo - timedelta(days=lo.weekday())  # Monday of lo's ISO week
+        end = hi - timedelta(days=hi.weekday())
+        while cur <= end:
+            out.append(cur)
+            cur += timedelta(days=7)
+        return out
+    # monthly
+    cur = lo.replace(day=1)
+    end = hi.replace(day=1)
+    while cur <= end:
+        out.append(cur)
+        cur = (cur.replace(day=28) + timedelta(days=4)).replace(day=1)
+    return out
+
+
+def _least_squares(xs: list[int], ys: list[float]) -> tuple[float, float]:
+    """Fit ``y = slope·x + intercept`` by ordinary least squares.
+
+    Args:
+        xs: Independent values (day ordinals). Must be non-empty and the same
+            length as ``ys``.
+        ys: Dependent values (prices).
+
+    Returns:
+        A ``(slope, intercept)`` tuple. Degenerate inputs (a single point, or
+        all ``xs`` identical) yield ``slope = 0`` and ``intercept = mean(ys)``,
+        i.e. a flat line at the average — a safe constant fill.
+    """
+    n = len(xs)
+    mean_x = sum(xs) / n
+    mean_y = sum(ys) / n
+    sxx = sum((x - mean_x) ** 2 for x in xs)
+    if sxx == 0:
+        return 0.0, mean_y
+    sxy = sum((x - mean_x) * (y - mean_y) for x, y in zip(xs, ys, strict=True))
+    slope = sxy / sxx
+    return slope, mean_y - slope * mean_x
+
+
+def _fill_history_regression(
+    points: list[HistoryPoint],
+    granularity: Granularity,
+    date_from: date | None,
+    date_to: date | None,
+) -> list[HistoryPoint]:
+    """Fill gaps in each series with a per-series least-squares regression.
+
+    Series are keyed by ``(city_slug, product_variety, product_category,
+    unit_name)``. For every series we fit a line over its real points and
+    predict each missing bucket that falls between the series' first and last
+    real observation (no extrapolation past the ends). Predictions are clamped
+    to ``>= 0`` and rounded to 4 dp.
+
+    Args:
+        points: Real history points (``interpolated=False``), any order.
+        granularity: Bucketing level for the gap sequence.
+        date_from: Range lower bound; unused for fill bounds (we never
+            extrapolate before a series' first point) but accepted for symmetry.
+        date_to: Range upper bound; likewise advisory.
+
+    Returns:
+        Real points plus synthesized gap points, sorted by
+        ``(bulletin_date, city_slug, product_category, product_variety)``.
+    """
+    if not points:
+        return points
+
+    groups: dict[tuple[str, str | None, str | None, str], dict[date, HistoryPoint]] = {}
+    for p in points:
+        key = (p.city_slug, p.product_variety, p.product_category, p.unit_name)
+        groups.setdefault(key, {})[p.bulletin_date] = p
+
+    filled: list[HistoryPoint] = list(points)
+    for (city_slug, variety, category, unit), by_date in groups.items():
+        if len(by_date) < 2:
+            continue  # nothing to interpolate across
+        first, last = min(by_date), max(by_date)
+        xs = [d.toordinal() for d in by_date]
+        ys = [float(by_date[d].average_price) for d in by_date]
+        slope, intercept = _least_squares(xs, ys)
+        for bucket in _bucket_sequence(first, last, granularity):
+            if bucket in by_date:
+                continue
+            predicted = max(0.0, slope * bucket.toordinal() + intercept)
+            filled.append(
+                HistoryPoint(
+                    bulletin_date=bucket,
+                    city_slug=city_slug,
+                    product_variety=variety,
+                    product_category=category,
+                    average_price=Decimal(predicted).quantize(_FOUR_DP),
+                    unit_name=unit,
+                    interpolated=True,
+                )
+            )
+
+    filled.sort(
+        key=lambda p: (
+            p.bulletin_date,
+            p.city_slug,
+            p.product_category or "",
+            p.product_variety or "",
+        )
+    )
+    return filled
 
 
 # --- Endpoints -------------------------------------------------------------
@@ -172,16 +319,12 @@ async def city_prices(
     # ``to_regclass`` returns NULL when the table does not exist. Newly-seeded
     # cities (or placeholder scrapers that have never written) won't have a
     # ``prices_<slug>`` table yet, so treat that as "no data" rather than 500.
-    exists = (
-        await session.execute(text("SELECT to_regclass(:n)"), {"n": table_name})
-    ).scalar()
+    exists = (await session.execute(text("SELECT to_regclass(:n)"), {"n": table_name})).scalar()
     if exists is None:
         return []
 
     if bulletin_date is None:
-        latest = await session.execute(
-            text(f"SELECT MAX(bulletin_date) FROM {table_name}")
-        )
+        latest = await session.execute(text(f"SELECT MAX(bulletin_date) FROM {table_name}"))
         bulletin_date = latest.scalar()
         if bulletin_date is None:
             return []
@@ -189,9 +332,10 @@ async def city_prices(
     # Phase 3 schema: textual product fields come from the products registry
     # via a JOIN on product_id. The wire format is unchanged.
     rows = (
-        await session.execute(
-            text(
-                f"""
+        (
+            await session.execute(
+                text(
+                    f"""
                 SELECT pn.bulletin_date,
                        p.name AS product_name,
                        p.variety AS product_variety,
@@ -204,10 +348,13 @@ async def city_prices(
                 WHERE pn.bulletin_date = :d
                 ORDER BY p.name, p.variety, p.category
                 """
-            ),
-            {"d": bulletin_date},
+                ),
+                {"d": bulletin_date},
+            )
         )
-    ).mappings().all()
+        .mappings()
+        .all()
+    )
     return [PriceRow(**row) for row in rows]
 
 
@@ -281,6 +428,14 @@ async def product_history(
             "first of month for monthly)."
         ),
     ),
+    fill: bool = Query(
+        default=False,
+        description=(
+            "When true, gaps in each series are filled by a per-series "
+            "least-squares regression over its real points; synthesized points "
+            "are flagged with ``interpolated=true``."
+        ),
+    ),
     session: AsyncSession = Depends(get_session),
 ) -> list[HistoryPoint]:
     """Return the historical price series for a product across one or all cities.
@@ -295,6 +450,9 @@ async def product_history(
             two latter values do server-side aggregation via PostgreSQL
             ``date_trunc`` + ``AVG`` so the wire payload shrinks dramatically
             for long ranges.
+        fill: When true, synthesize missing buckets per series via a
+            least-squares regression over the real points (gaps only, no
+            extrapolation past each series' first/last observation).
         session: Injected DB session.
 
     Returns:
@@ -350,4 +508,7 @@ async def product_history(
 
     sql = f"{union_sql}\nORDER BY bulletin_date, city_slug, product_category, product_variety"
     rows = (await session.execute(text(sql), params)).mappings().all()
-    return [HistoryPoint(**row) for row in rows]
+    points = [HistoryPoint(**row) for row in rows]
+    if fill:
+        points = _fill_history_regression(points, granularity, date_from, date_to)
+    return points

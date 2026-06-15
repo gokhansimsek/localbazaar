@@ -29,6 +29,8 @@ export type HistoryPoint = {
   product_category: string | null;
   average_price: string;
   unit_name: string;
+  /** True when the point was synthesized by the server's regression gap-fill. */
+  interpolated: boolean;
 };
 
 export type ProductSummary = {
@@ -160,6 +162,8 @@ export function productHistory(
     to?: string;
     /** ``"weekly"`` / ``"monthly"`` ask the backend to pre-aggregate via ``date_trunc + AVG``. */
     granularity?: HistoryGranularity;
+    /** Ask the backend to fill gaps per series via least-squares regression. */
+    fill?: boolean;
   },
 ): Promise<HistoryPoint[]> {
   const params = new URLSearchParams();
@@ -169,6 +173,7 @@ export function productHistory(
   if (opts?.granularity && opts.granularity !== "daily") {
     params.set("granularity", opts.granularity);
   }
+  if (opts?.fill) params.set("fill", "true");
   const qs = params.toString();
   return get<HistoryPoint[]>(
     `/api/products/${encodeURIComponent(name)}/history${qs ? `?${qs}` : ""}`,

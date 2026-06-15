@@ -50,9 +50,9 @@ export default function TrendsPage() {
   // dailyPoints powers the stat-card deltas across every range; it's the full
   // unaggregated history fetched once per product change.
   const [dailyPoints, setDailyPoints] = useState<HistoryPoint[]>([]);
-  // aggregatedPoints carries the pre-aggregated rows for weekly/monthly
-  // ranges; for daily ranges it stays empty and the chart uses dailyPoints.
-  const [aggregatedPoints, setAggregatedPoints] = useState<HistoryPoint[]>([]);
+  // chartPoints is the server-bucketed + regression-filled series for the
+  // active range; it's exactly what the chart plots.
+  const [chartPoints, setChartPoints] = useState<HistoryPoint[]>([]);
   const [loading, setLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
   const [activeRangeKey, setActiveRangeKey] = useState<string>(DEFAULT_RANGE_KEY);
@@ -84,35 +84,28 @@ export default function TrendsPage() {
 
   const activeRange = RANGES.find((r) => r.key === activeRangeKey) ?? RANGES[2];
 
-  // Re-fetch chart data when the active range needs server-side aggregation.
-  // For daily ranges we already have everything in dailyPoints and skip the
-  // round-trip; for weekly/monthly we ask the backend to GROUP BY + AVG so the
-  // payload stays small even on the year/all views.
+  // Fetch the chart series from the server for the active range: it buckets to
+  // the target granularity and fills gaps with a per-series least-squares
+  // regression, so the client just plots what comes back. dailyPoints (full,
+  // unfilled) still drives the stat cards below.
   useEffect(() => {
     if (!selected) return;
-    if (activeRange.granularity === "daily") {
-      setAggregatedPoints([]);
-      return;
-    }
-    const from = rangeFromIso(dailyPoints, activeRange);
+    // Wait for the full history to land so range bounds anchor on the real
+    // latest date instead of firing an unbounded full-history fill first.
+    if (dailyPoints.length === 0) return;
+    const { from, to } = rangeBounds(dailyPoints, activeRange);
     const opts: Parameters<typeof productHistory>[1] = {
       granularity: activeRange.granularity,
+      fill: true,
     };
     if (from) opts.from = from;
+    if (to) opts.to = to;
     productHistory(selected, opts)
-      .then(setAggregatedPoints)
+      .then(setChartPoints)
       .catch((e) => setError(String(e)));
   }, [selected, activeRange, dailyPoints]);
 
   const buckets = useMemo(() => computeBuckets(dailyPoints), [dailyPoints]);
-  const chartPoints = useMemo(() => {
-    if (activeRange.granularity === "daily") {
-      return buildChartSeries(dailyPoints, activeRange);
-    }
-    // Aggregated rows are already at the target granularity; only the
-    // gap-fill interpolation still has to run.
-    return buildChartSeries(aggregatedPoints, activeRange);
-  }, [dailyPoints, aggregatedPoints, activeRange]);
   const summary = products.find((p) => p.product_name === selected);
 
   return (
@@ -268,105 +261,21 @@ function emptyBucket(): Bucket {
 }
 
 /**
- * Compute the inclusive ``from`` date for the active range, anchored on the
- * latest bulletin date we have in ``daily`` (so the window matches the actual
- * data, not the wall clock). Returns ``undefined`` for ``"today"`` and
- * ``"all"`` so the backend either keys off its own latest date or omits the
- * filter entirely.
+ * Compute the inclusive ``{ from, to }`` ISO bounds for the active range,
+ * anchored on the latest bulletin date in ``daily`` (so the window tracks the
+ * actual data, not the wall clock). ``"all"`` returns no bounds (full history);
+ * ``"today"`` collapses to the latest day; numeric ranges look back ``days``
+ * from the latest date. The server uses these to bucket and regression-fill.
  */
-function rangeFromIso(daily: HistoryPoint[], range: RangeDef): string | undefined {
-  if (range.days === "all" || range.days === "today") return undefined;
-  if (daily.length === 0) return undefined;
+function rangeBounds(daily: HistoryPoint[], range: RangeDef): { from?: string; to?: string } {
+  if (daily.length === 0) return {};
   const sorted = [...daily].sort((a, b) => a.bulletin_date.localeCompare(b.bulletin_date));
   const latestIso = sorted[sorted.length - 1].bulletin_date;
+  if (range.days === "all") return {};
+  if (range.days === "today") return { from: latestIso, to: latestIso };
   const from = new Date(latestIso + "T00:00:00Z");
   from.setUTCDate(from.getUTCDate() - range.days);
-  return from.toISOString().slice(0, 10);
-}
-
-/**
- * Build the actual chart-input series for the active range. Steps:
- * 1. Filter raw points to the window implied by ``range.days`` (anchored on the
- *    latest available bulletin_date).
- * 2. Bucket every point into either a calendar day or the Monday of its ISO
- *    week, depending on ``range.granularity``.
- * 3. Average prices within each (series, bucket) pair so each (city × category
- *    × variety) line gets one value per bucket.
- * 4. Linearly interpolate buckets that fall *inside* the series's known range
- *    but have no observation. No extrapolation past the first / last known
- *    bucket — those gaps stay empty rather than fabricate trends.
- *
- * The output is in the same ``HistoryPoint`` shape the chart already expects,
- * so we don't need to touch the chart component.
- */
-export function buildChartSeries(points: HistoryPoint[], range: RangeDef): HistoryPoint[] {
-  if (points.length === 0) return [];
-
-  const sorted = [...points].sort((a, b) => a.bulletin_date.localeCompare(b.bulletin_date));
-  const latestIso = sorted[sorted.length - 1].bulletin_date;
-
-  const inWindow = (() => {
-    if (range.days === "all") return sorted;
-    if (range.days === "today") return sorted.filter((p) => p.bulletin_date === latestIso);
-    const from = new Date(latestIso + "T00:00:00Z");
-    from.setUTCDate(from.getUTCDate() - range.days);
-    const fromIso = from.toISOString().slice(0, 10);
-    return sorted.filter((p) => p.bulletin_date >= fromIso);
-  })();
-
-  if (inWindow.length === 0) return [];
-
-  // Window endpoints for bucket-sequence generation.
-  const windowFromIso = inWindow[0].bulletin_date;
-  const windowToIso = inWindow[inWindow.length - 1].bulletin_date;
-
-  // Group by series (city × category × variety).
-  const bySeries = new Map<string, HistoryPoint[]>();
-  for (const p of inWindow) {
-    const key = seriesKey(p);
-    const arr = bySeries.get(key) ?? [];
-    arr.push(p);
-    bySeries.set(key, arr);
-  }
-
-  const out: HistoryPoint[] = [];
-  for (const seriesPoints of bySeries.values()) {
-    const template = seriesPoints[0];
-
-    // Aggregate to bucket → mean(average_price). Bucket key is the start
-    // of the bucket (day, Monday of week, or first of month).
-    const byBucket = new Map<string, number[]>();
-    for (const p of seriesPoints) {
-      const bucket = bucketKey(p.bulletin_date, range.granularity);
-      const n = Number(p.average_price);
-      if (!Number.isFinite(n)) continue;
-      const arr = byBucket.get(bucket) ?? [];
-      arr.push(n);
-      byBucket.set(bucket, arr);
-    }
-    if (byBucket.size === 0) continue;
-
-    const known = Array.from(byBucket.entries())
-      .map(([bucket, vals]) => ({ bucket, value: vals.reduce((s, n) => s + n, 0) / vals.length }))
-      .sort((a, b) => a.bucket.localeCompare(b.bucket));
-
-    const allBuckets = bucketSequence(windowFromIso, windowToIso, range.granularity);
-    const filled = linearFill(allBuckets, known);
-
-    for (const { bucket, value } of filled) {
-      out.push({
-        ...template,
-        bulletin_date: bucket,
-        average_price: String(value),
-      });
-    }
-  }
-
-  return out;
-}
-
-function seriesKey(p: HistoryPoint): string {
-  return [p.city_slug, p.product_category ?? "", p.product_variety ?? ""].join("|");
+  return { from: from.toISOString().slice(0, 10), to: latestIso };
 }
 
 function granularityLabel(g: Granularity): string {
@@ -378,125 +287,6 @@ function granularityLabel(g: Granularity): string {
     case "monthly":
       return "Aylık";
   }
-}
-
-/**
- * Compute the bucket-start ISO date for ``iso`` at the given granularity.
- *
- * - ``"daily"``  → the date itself.
- * - ``"weekly"`` → the Monday of the ISO week containing the date.
- * - ``"monthly"``→ the first day of the calendar month containing the date.
- */
-export function bucketKey(iso: string, granularity: Granularity): string {
-  switch (granularity) {
-    case "daily":
-      return iso;
-    case "weekly":
-      return isoWeekStart(iso);
-    case "monthly":
-      return monthStart(iso);
-  }
-}
-
-/**
- * Return ``YYYY-MM-DD`` of the Monday of the ISO week that contains ``iso``.
- * ISO weeks start on Monday; Sunday belongs to the previous week.
- */
-export function isoWeekStart(iso: string): string {
-  const d = new Date(iso + "T00:00:00Z");
-  const weekday = d.getUTCDay(); // 0=Sunday, 1=Monday, … 6=Saturday
-  const offsetToMonday = weekday === 0 ? -6 : 1 - weekday;
-  d.setUTCDate(d.getUTCDate() + offsetToMonday);
-  return d.toISOString().slice(0, 10);
-}
-
-/**
- * Return ``YYYY-MM-01`` of the calendar month that contains ``iso``.
- */
-export function monthStart(iso: string): string {
-  return `${iso.slice(0, 7)}-01`;
-}
-
-/**
- * Inclusive list of bucket-start ISO dates between ``fromIso`` and ``toIso``
- * at the given granularity. Boundaries snap to the start of the bucket the
- * input falls into.
- */
-export function bucketSequence(fromIso: string, toIso: string, granularity: Granularity): string[] {
-  const out: string[] = [];
-  if (granularity === "daily") {
-    const d = new Date(fromIso + "T00:00:00Z");
-    const end = new Date(toIso + "T00:00:00Z");
-    while (d <= end) {
-      out.push(d.toISOString().slice(0, 10));
-      d.setUTCDate(d.getUTCDate() + 1);
-    }
-    return out;
-  }
-  if (granularity === "weekly") {
-    const startMon = new Date(isoWeekStart(fromIso) + "T00:00:00Z");
-    const endMon = new Date(isoWeekStart(toIso) + "T00:00:00Z");
-    while (startMon <= endMon) {
-      out.push(startMon.toISOString().slice(0, 10));
-      startMon.setUTCDate(startMon.getUTCDate() + 7);
-    }
-    return out;
-  }
-  // monthly
-  const start = new Date(monthStart(fromIso) + "T00:00:00Z");
-  const end = new Date(monthStart(toIso) + "T00:00:00Z");
-  while (start <= end) {
-    out.push(start.toISOString().slice(0, 10));
-    start.setUTCMonth(start.getUTCMonth() + 1);
-  }
-  return out;
-}
-
-/**
- * Linearly interpolate values for every bucket in ``allBuckets`` that has no
- * observation in ``known``. ``known`` must be sorted ascending by ``bucket``.
- *
- * Buckets earlier than the first known one or later than the last are dropped
- * — we never extrapolate past the data we have.
- */
-export function linearFill(
-  allBuckets: string[],
-  known: { bucket: string; value: number }[],
-): { bucket: string; value: number }[] {
-  if (known.length === 0) return [];
-  const knownMap = new Map(known.map((k) => [k.bucket, k.value]));
-  const first = known[0].bucket;
-  const last = known[known.length - 1].bucket;
-
-  const out: { bucket: string; value: number }[] = [];
-  let nextKnownIdx = 0;
-  for (const bucket of allBuckets) {
-    if (bucket < first || bucket > last) continue;
-    const direct = knownMap.get(bucket);
-    if (direct !== undefined) {
-      out.push({ bucket, value: direct });
-      // Advance nextKnownIdx past this bucket so the search below stays O(n).
-      while (nextKnownIdx < known.length && known[nextKnownIdx].bucket <= bucket) nextKnownIdx++;
-      continue;
-    }
-    // Find the bracketing known points.
-    let leftIdx = nextKnownIdx - 1;
-    while (leftIdx >= 0 && known[leftIdx].bucket >= bucket) leftIdx--;
-    const left = leftIdx >= 0 ? known[leftIdx] : null;
-    let rightIdx = nextKnownIdx;
-    while (rightIdx < known.length && known[rightIdx].bucket <= bucket) rightIdx++;
-    const right = rightIdx < known.length ? known[rightIdx] : null;
-    if (!left || !right) continue; // boundary — leave gap rather than extrapolate
-    const t =
-      (msFromIso(bucket) - msFromIso(left.bucket)) /
-      (msFromIso(right.bucket) - msFromIso(left.bucket));
-    out.push({ bucket, value: left.value + (right.value - left.value) * t });
-  }
-  return out;
-}
-
-function msFromIso(iso: string): number {
-  return new Date(iso + "T00:00:00Z").getTime();
 }
 
 function BucketCard({

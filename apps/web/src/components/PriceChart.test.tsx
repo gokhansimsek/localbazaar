@@ -30,6 +30,7 @@ describe("PriceChart", () => {
         product_category: "Geleneksel/Konvansiyonel",
         average_price: "18.4",
         unit_name: "Kg",
+        interpolated: false,
       },
     ];
     render(<PriceChart points={points} />);
@@ -45,6 +46,7 @@ describe("PriceChart", () => {
         product_category: "Geleneksel/Konvansiyonel",
         average_price: "17.5",
         unit_name: "Kg",
+        interpolated: false,
       },
       {
         bulletin_date: "2026-05-11",
@@ -53,6 +55,7 @@ describe("PriceChart", () => {
         product_category: "Geleneksel/Konvansiyonel",
         average_price: "18.4",
         unit_name: "Kg",
+        interpolated: false,
       },
       {
         bulletin_date: "2026-05-10",
@@ -61,6 +64,7 @@ describe("PriceChart", () => {
         product_category: "Geleneksel/Konvansiyonel",
         average_price: "19.0",
         unit_name: "Kg",
+        interpolated: false,
       },
       {
         bulletin_date: "2026-05-11",
@@ -69,6 +73,7 @@ describe("PriceChart", () => {
         product_category: "Geleneksel/Konvansiyonel",
         average_price: "19.5",
         unit_name: "Kg",
+        interpolated: false,
       },
     ];
     render(<PriceChart points={points} />);

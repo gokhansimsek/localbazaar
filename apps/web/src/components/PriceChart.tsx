@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo } from "react";
+import { useMemo, type ReactElement } from "react";
 import {
   CartesianGrid,
   Line,
@@ -10,6 +10,7 @@ import {
   XAxis,
   YAxis,
   Legend,
+  type LineProps,
 } from "recharts";
 import type { HistoryPoint } from "@/lib/api";
 import { formatDate, formatPrice } from "@/lib/format";
@@ -38,6 +39,39 @@ const SERIES_COLORS = [
 
 type Series = { key: string; label: string };
 
+type DotProps = {
+  cx?: number;
+  cy?: number;
+  payload?: Record<string, number | string>;
+};
+
+/**
+ * Render a per-point dot that distinguishes real observations from
+ * regression-filled gaps: real points get a small solid dot in the series
+ * color, synthesized points a hollow ring. Cells with no value for this series
+ * (outside its date range) render nothing.
+ */
+function renderDot(props: DotProps, key: string, color: string): ReactElement {
+  const { cx, cy, payload } = props;
+  if (cx == null || cy == null || payload?.[key] == null) {
+    return <g key={`${key}-${cx}-${cy}`} />;
+  }
+  const isReal = payload[`${key}__real`] === 1;
+  return isReal ? (
+    <circle key={`${key}-${cx}-${cy}`} cx={cx} cy={cy} r={2.5} fill={color} stroke="none" />
+  ) : (
+    <circle
+      key={`${key}-${cx}-${cy}`}
+      cx={cx}
+      cy={cy}
+      r={3}
+      fill="#fff"
+      stroke={color}
+      strokeWidth={1.5}
+    />
+  );
+}
+
 /**
  * Pivots history points into a chart-friendly shape: one row per bulletin_date,
  * one numeric column per distinct (city_slug, product_category, product_variety) triple.
@@ -61,6 +95,9 @@ function pivot(
     }
     const r = byDate.get(p.bulletin_date) ?? { bulletin_date: p.bulletin_date };
     r[key] = Number(p.average_price);
+    // Track whether this cell is a real observation (1) or a regression-filled
+    // gap (0) so the dot renderer can distinguish them.
+    r[`${key}__real`] = p.interpolated ? 0 : 1;
     byDate.set(p.bulletin_date, r);
   }
 
@@ -157,7 +194,14 @@ export function PriceChart({ points, cityNames }: Props) {
                 name={s.label}
                 stroke={SERIES_COLORS[i % SERIES_COLORS.length]}
                 strokeWidth={2}
-                dot={false}
+                dot={
+                  ((props: DotProps) =>
+                    renderDot(
+                      props,
+                      s.key,
+                      SERIES_COLORS[i % SERIES_COLORS.length],
+                    )) as unknown as LineProps["dot"]
+                }
                 activeDot={{ r: 4 }}
               />
             ))}
