@@ -668,4 +668,45 @@ def normalize_category(raw: str | None) -> str:
     return _DEFAULT_CATEGORY
 
 
-__all__ = ["is_fish_name", "normalize", "normalize_category", "normalize_unit"]
+def promote_category_words(
+    name: str,
+    variety: str | None,
+    category: str,
+) -> tuple[str, str | None, str]:
+    """Move category-like words out of ``variety`` into the right slot.
+
+    Some scrapers spell origin / trade tags inside the variety column when
+    they really belong in the category slot — ``Muz / İthal``,
+    ``Karpuz / İthal``, ``Muz / Yerli``, ``Muz / Yerli Anamur``. We strip the
+    leaked token here so it can either re-classify the product (``İthal``)
+    or get dropped entirely (``Yerli`` is the implicit default; the actual
+    cultivar like ``Anamur`` is what we keep).
+
+    Args:
+        name: Canonical product name.
+        variety: Variety from :func:`normalize` (post-canonicalization).
+        category: Already-canonical category from :func:`normalize_category`.
+
+    Returns:
+        A possibly-rewritten ``(name, variety, category)`` triple.
+    """
+    if variety is None:
+        return name, None, category
+    v = variety.strip()
+    if v == "İthal":
+        return name, None, "İthal"
+    if v == "Yerli":
+        return name, None, category
+    if v.startswith("Yerli "):
+        rest = v[len("Yerli "):].strip()
+        return name, rest or None, category
+    return name, variety, category
+
+
+__all__ = [
+    "is_fish_name",
+    "normalize",
+    "normalize_category",
+    "normalize_unit",
+    "promote_category_words",
+]

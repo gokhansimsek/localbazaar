@@ -26,7 +26,13 @@ from tenacity import (
 
 from local_bazaar.config import settings
 from local_bazaar.db import city_slug, ensure_city_table, prices_table_name
-from local_bazaar.products_normalize import normalize, normalize_category, normalize_unit
+from local_bazaar.products_normalize import (
+    is_fish_name,
+    normalize,
+    normalize_category,
+    normalize_unit,
+    promote_category_words,
+)
 
 log = logging.getLogger(__name__)
 
@@ -124,6 +130,7 @@ async def _resolve_product_id(
     """
     name, variety = normalize(raw_name, raw_variety)
     category = normalize_category(raw_category)
+    name, variety, category = promote_category_words(name, variety, category)
     unit = normalize_unit(raw_unit)
     res = await session.execute(
         text(
@@ -209,6 +216,11 @@ async def upsert_prices(
         # distinct product.
         pid_cache: dict[tuple[str, str, str, str], int] = {}
         for p in items:
+            # Drop fish/seafood centrally — the platform scope is produce only.
+            # The national scraper filters at source; this catches per-city
+            # sources (e.g. Bursa's seafood tab) that emit fish rows.
+            if is_fish_name(p.product_name):
+                continue
             key = (
                 p.product_name,
                 p.product_variety or "",

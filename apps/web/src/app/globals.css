@@ -34,18 +34,22 @@
 
 @layer utilities {
   @keyframes mapPulse {
-    0% { transform: translate(-50%,-50%) scale(0.6); opacity: 0.6; }
-    80% { transform: translate(-50%,-50%) scale(3.6); opacity: 0; }
-    100% { transform: translate(-50%,-50%) scale(3.6); opacity: 0; }
+    0% { transform: translate(-50%,-50%) scale(0.6); opacity: 0.55; }
+    100% { transform: translate(-50%,-50%) scale(3.4); opacity: 0; }
+  }
+  @keyframes mapDotPulse {
+    0%, 100% { transform: scale(1); }
+    50% { transform: scale(1.25); }
   }
   @keyframes mapScan {
     0% { transform: translateX(0); opacity: 0; }
-    20%, 70% { opacity: 1; }
+    25% { opacity: 0.55; }
+    75% { opacity: 0.55; }
     100% { transform: translateX(400%); opacity: 0; }
   }
   @keyframes tooltipFloat {
-    0%, 100% { transform: translate(-50%, -140%); }
-    50% { transform: translate(-50%, -150%); }
+    0%, 100% { transform: translate(-50%, 0); }
+    50% { transform: translate(-50%, -6px); }
   }
   @keyframes priceScroll {
     0% { transform: translateY(0); }
