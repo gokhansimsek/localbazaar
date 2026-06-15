@@ -260,6 +260,32 @@ def _fill_history_regression(
     return filled
 
 
+def _drop_all_zero_series(points: list[HistoryPoint]) -> list[HistoryPoint]:
+    """Drop series whose every point in range is zero.
+
+    A series keyed by ``(city_slug, variety, category, unit)`` that carries no
+    non-zero price over the requested window is just a flat line on the floor —
+    it clutters the chart without conveying anything, so we remove it entirely.
+    Series with at least one non-zero point are kept untouched (including their
+    legitimate zero readings).
+
+    Args:
+        points: History points across one or more series.
+
+    Returns:
+        ``points`` minus every all-zero series, original order preserved.
+    """
+    nonzero_keys: set[tuple[str, str | None, str | None, str]] = set()
+    for p in points:
+        if p.average_price != 0:
+            nonzero_keys.add((p.city_slug, p.product_variety, p.product_category, p.unit_name))
+    return [
+        p
+        for p in points
+        if (p.city_slug, p.product_variety, p.product_category, p.unit_name) in nonzero_keys
+    ]
+
+
 # --- Endpoints -------------------------------------------------------------
 
 
@@ -509,6 +535,9 @@ async def product_history(
     sql = f"{union_sql}\nORDER BY bulletin_date, city_slug, product_category, product_variety"
     rows = (await session.execute(text(sql), params)).mappings().all()
     points = [HistoryPoint(**row) for row in rows]
+    # Drop series that are all-zero over the window before filling — there is
+    # nothing meaningful to plot or regress for them.
+    points = _drop_all_zero_series(points)
     if fill:
         points = _fill_history_regression(points, granularity, date_from, date_to)
     return points
