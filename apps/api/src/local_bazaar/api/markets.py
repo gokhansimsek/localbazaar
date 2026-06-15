@@ -158,8 +158,11 @@ async def list_markets(
                 detail=f"Unknown day '{day}'. Expected one of: {sorted(_DAY_NAMES)}.",
             )
         # Comma-split exact match so "Pazar" won't catch "Pazartesi".
+        # Cast the bound array to text[] so it matches string_to_array's text[]
+        # output; without the cast psycopg binds it as varchar[] and Postgres
+        # has no `text[] @> varchar[]` operator (raises UndefinedFunction).
         stmt = stmt.where(
-            text("string_to_array(day_of_week, ',') @> ARRAY[:day]").bindparams(day=day)
+            text("string_to_array(day_of_week, ',') @> ARRAY[:day]::text[]").bindparams(day=day)
         )
     if only_geocoded:
         stmt = stmt.where(col(Market.latitude).is_not(None))
