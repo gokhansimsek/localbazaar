@@ -7,7 +7,9 @@ var. If it is missing, integration tests are skipped automatically.
 
 from __future__ import annotations
 
+import asyncio
 import os
+import sys
 from collections.abc import AsyncIterator
 
 import pytest
@@ -31,6 +33,22 @@ requires_db = pytest.mark.skipif(
     _test_db_url() is None,
     reason="TEST_DATABASE_URL not set — skipping DB integration tests.",
 )
+
+
+@pytest.fixture(scope="session")
+def event_loop_policy() -> asyncio.AbstractEventLoopPolicy:
+    """Event-loop policy for async tests.
+
+    On Windows, psycopg's async mode is incompatible with the default
+    ``ProactorEventLoop``, so use a selector-based policy (mirrors the fix in
+    ``migrations/env.py``). Other platforms keep the default policy.
+
+    Returns:
+        The event-loop policy pytest-asyncio should use for the session.
+    """
+    if sys.platform == "win32":
+        return asyncio.WindowsSelectorEventLoopPolicy()
+    return asyncio.DefaultEventLoopPolicy()
 
 
 @pytest_asyncio.fixture

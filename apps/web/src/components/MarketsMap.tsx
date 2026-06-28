@@ -12,6 +12,8 @@ import {
 } from "@vis.gl/react-google-maps";
 import type { MarketOut } from "@/lib/api";
 
+type LatLng = { lat: number; lng: number };
+
 type Props = {
   apiKey: string;
   markets: MarketOut[];
@@ -22,6 +24,21 @@ type Props = {
    * when a district is selected, else province name, else undefined.
    */
   focusLabel?: string;
+  /**
+   * When set, clicking the map reports the clicked coordinates — used by the
+   * "suggest a new place" flow to drop a pin.
+   */
+  onMapClick?: (lat: number, lng: number) => void;
+  /** A draft pin (e.g. the location being suggested), rendered in accent pink. */
+  draftPin?: LatLng | null;
+  /**
+   * When true, clicking an existing market pin selects it via
+   * ``onSelectMarket`` (used by the "update an existing place" flow) in
+   * addition to opening its info window.
+   */
+  selectable?: boolean;
+  /** Called with the market a user clicked while ``selectable`` is on. */
+  onSelectMarket?: (market: MarketOut) => void;
 };
 
 // Center of Turkey (rough geographic centroid near Kırşehir) — used as the
@@ -29,7 +46,15 @@ type Props = {
 const TURKEY_CENTER = { lat: 39.0, lng: 35.0 } as const;
 const TURKEY_DEFAULT_ZOOM = 6;
 
-export function MarketsMap({ apiKey, markets, focusLabel }: Props) {
+export function MarketsMap({
+  apiKey,
+  markets,
+  focusLabel,
+  onMapClick,
+  draftPin,
+  selectable,
+  onSelectMarket,
+}: Props) {
   const [active, setActive] = useState<MarketOut | null>(null);
 
   const geocoded = useMemo(
@@ -61,13 +86,24 @@ export function MarketsMap({ apiKey, markets, focusLabel }: Props) {
             defaultZoom={TURKEY_DEFAULT_ZOOM}
             gestureHandling="greedy"
             disableDefaultUI={false}
+            onClick={
+              onMapClick
+                ? (e) => {
+                    const ll = e.detail.latLng;
+                    if (ll) onMapClick(ll.lat, ll.lng);
+                  }
+                : undefined
+            }
           >
             <MapFocus markets={geocoded} focusLabel={focusLabel} />
             {geocoded.map((m) => (
               <AdvancedMarker
                 key={m.id}
                 position={{ lat: m.latitude as number, lng: m.longitude as number }}
-                onClick={() => setActive(m)}
+                onClick={() => {
+                  setActive(m);
+                  if (selectable) onSelectMarket?.(m);
+                }}
               >
                 <Pin
                   background={m.market_type === "semt_pazari" ? "#635BFF" : "#00D4FF"}
@@ -76,6 +112,11 @@ export function MarketsMap({ apiKey, markets, focusLabel }: Props) {
                 />
               </AdvancedMarker>
             ))}
+            {draftPin && (
+              <AdvancedMarker position={draftPin}>
+                <Pin background="#FF7AB6" borderColor="#FFFFFF" glyphColor="#FFFFFF" />
+              </AdvancedMarker>
+            )}
             {active && active.latitude !== null && active.longitude !== null && (
               <InfoWindow
                 position={{ lat: active.latitude, lng: active.longitude }}

@@ -1,8 +1,9 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { LocateFixed } from "lucide-react";
+import { LocateFixed, MapPinPlus } from "lucide-react";
 import { MarketsMap } from "@/components/MarketsMap";
+import { SuggestionForm } from "@/components/SuggestionForm";
 import { cn } from "@/lib/cn";
 import {
   listDistricts,
@@ -12,6 +13,7 @@ import {
   type MarketOut,
   type MarketTypeSlug,
   type Province,
+  type SuggestionType,
 } from "@/lib/api";
 
 const TYPES: { value: MarketTypeSlug | "all"; label: string }[] = [
@@ -34,6 +36,12 @@ export default function MarketsPage() {
   const [error, setError] = useState<string | null>(null);
   const [locating, setLocating] = useState<boolean>(false);
   const [locationError, setLocationError] = useState<string | null>(null);
+
+  // Place-suggestion flow.
+  const [showSuggest, setShowSuggest] = useState<boolean>(false);
+  const [suggestMode, setSuggestMode] = useState<SuggestionType>("add");
+  const [draftPin, setDraftPin] = useState<{ lat: number; lng: number } | null>(null);
+  const [selectedMarket, setSelectedMarket] = useState<MarketOut | null>(null);
 
   const hasActiveFilter = Boolean(province || district || day) || marketType !== "all";
 
@@ -170,15 +178,29 @@ export default function MarketsPage() {
           <span className="chip">Pazarlar</span>
           <h1 className="text-3xl font-semibold tracking-tight lg:text-4xl">Pazar Yerleri</h1>
         </div>
-        <button
-          type="button"
-          onClick={useMyLocation}
-          disabled={locating}
-          className="inline-flex items-center gap-2 rounded-xl border border-surface-border bg-white px-3 py-2 text-sm font-medium text-ink-soft transition-colors hover:border-indigo-300 hover:text-indigo-700 disabled:opacity-60"
-        >
-          <LocateFixed size={14} />
-          {locating ? "Konum alınıyor…" : "Konumumu Kullan"}
-        </button>
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            onClick={useMyLocation}
+            disabled={locating}
+            className="inline-flex items-center gap-2 rounded-xl border border-surface-border bg-white px-3 py-2 text-sm font-medium text-ink-soft transition-colors hover:border-indigo-300 hover:text-indigo-700 disabled:opacity-60"
+          >
+            <LocateFixed size={14} />
+            {locating ? "Konum alınıyor…" : "Konumumu Kullan"}
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setShowSuggest((v) => !v);
+              setDraftPin(null);
+              setSelectedMarket(null);
+            }}
+            className="btn-primary"
+          >
+            <MapPinPlus size={14} />
+            Yer öner
+          </button>
+        </div>
       </header>
 
       {locationError && <div className="card p-3 text-xs text-danger">{locationError}</div>}
@@ -274,8 +296,33 @@ export default function MarketsPage() {
         </div>
       )}
 
+      {showSuggest && (
+        <SuggestionForm
+          provinces={provinces}
+          mode={suggestMode}
+          onModeChange={(m) => {
+            setSuggestMode(m);
+            setDraftPin(null);
+            setSelectedMarket(null);
+          }}
+          draftPin={draftPin}
+          selectedMarket={selectedMarket}
+          onClose={() => setShowSuggest(false)}
+        />
+      )}
+
       {loading && <div className="card p-3 text-center text-xs text-ink-muted">Yükleniyor…</div>}
-      <MarketsMap apiKey={apiKey} markets={markets} focusLabel={focusLabel} />
+      <MarketsMap
+        apiKey={apiKey}
+        markets={markets}
+        focusLabel={focusLabel}
+        onMapClick={
+          showSuggest && suggestMode === "add" ? (lat, lng) => setDraftPin({ lat, lng }) : undefined
+        }
+        draftPin={showSuggest && suggestMode === "add" ? draftPin : null}
+        selectable={showSuggest && suggestMode === "update"}
+        onSelectMarket={setSelectedMarket}
+      />
     </div>
   );
 }

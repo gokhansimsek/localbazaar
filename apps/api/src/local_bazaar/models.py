@@ -171,3 +171,103 @@ class ScrapeRun(SQLModel, table=True):
         default=None,
         sa_column=Column(DateTime(timezone=True), nullable=True),
     )
+
+
+class User(SQLModel, table=True):
+    """A lightweight site user who submits place suggestions.
+
+    There is no authentication: identity is captured per submission and
+    deduplicated by email (UPSERT on the unique ``email`` column). Location is
+    "city" (province) and "town" (district), held as nullable FKs.
+    """
+
+    __tablename__ = "users"
+
+    id: int | None = Field(default=None, primary_key=True)
+    first_name: str = Field(max_length=128)
+    last_name: str = Field(max_length=128)
+    # Stored lowercased; unique so repeat submitters reuse one row (ON CONFLICT).
+    email: str = Field(sa_column=Column(Text, nullable=False, unique=True, index=True))
+    province_id: int | None = Field(
+        default=None,
+        sa_column=Column(
+            ForeignKey("provinces.id", ondelete="SET NULL"), nullable=True, index=True
+        ),
+    )
+    district_id: int | None = Field(
+        default=None,
+        sa_column=Column(
+            ForeignKey("districts.id", ondelete="SET NULL"), nullable=True, index=True
+        ),
+    )
+    created_at: datetime = Field(
+        default_factory=_utcnow,
+        sa_column=Column(DateTime(timezone=True), server_default=func.now(), nullable=False),
+    )
+
+
+class SuggestionType(StrEnum):
+    """Whether a suggestion adds a new market or updates an existing one."""
+
+    ADD = "add"
+    UPDATE = "update"
+
+
+class SuggestionStatus(StrEnum):
+    """Review state of a place suggestion."""
+
+    PENDING = "pending"
+    APPROVED = "approved"
+    REJECTED = "rejected"
+
+
+class PlaceSuggestion(SQLModel, table=True):
+    """A user-submitted request to add or update a market place.
+
+    Stored ``pending``; an operator reviews and applies it in the database.
+    An ``add`` request carries the ``proposed_*`` fields plus pinned
+    coordinates; an ``update`` request references an existing ``markets`` row
+    via ``market_id``. Both kinds carry a free-text ``explanation``.
+    """
+
+    __tablename__ = "place_suggestions"
+
+    id: int | None = Field(default=None, primary_key=True)
+    user_id: int = Field(
+        sa_column=Column(ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True),
+    )
+    suggestion_type: SuggestionType = Field(sa_column=Column(String(16), nullable=False))
+    status: SuggestionStatus = Field(
+        default=SuggestionStatus.PENDING,
+        sa_column=Column(
+            String(16), nullable=False, index=True, default=SuggestionStatus.PENDING.value
+        ),
+    )
+    # Set for an ``update`` request; SET NULL keeps the suggestion if the
+    # referenced market row is later removed.
+    market_id: int | None = Field(
+        default=None,
+        sa_column=Column(ForeignKey("markets.id", ondelete="SET NULL"), nullable=True, index=True),
+    )
+    proposed_name: str | None = Field(default=None, max_length=255)
+    proposed_market_type: str | None = Field(default=None, max_length=32)
+    province_id: int | None = Field(
+        default=None,
+        sa_column=Column(ForeignKey("provinces.id", ondelete="SET NULL"), nullable=True),
+    )
+    district_id: int | None = Field(
+        default=None,
+        sa_column=Column(ForeignKey("districts.id", ondelete="SET NULL"), nullable=True),
+    )
+    latitude: float | None = Field(default=None)
+    longitude: float | None = Field(default=None)
+    explanation: str = Field(sa_column=Column(Text, nullable=False))
+    created_at: datetime = Field(
+        default_factory=_utcnow,
+        sa_column=Column(DateTime(timezone=True), server_default=func.now(), nullable=False),
+    )
+    reviewed_at: datetime | None = Field(
+        default=None,
+        sa_column=Column(DateTime(timezone=True), nullable=True),
+    )
+    review_note: str | None = Field(default=None, sa_column=Column(Text, nullable=True))

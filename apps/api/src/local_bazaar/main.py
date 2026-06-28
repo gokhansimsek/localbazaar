@@ -26,6 +26,7 @@ from local_bazaar import __version__
 from local_bazaar.api import markets as markets_router
 from local_bazaar.api import page_views as page_views_router
 from local_bazaar.api import prices as prices_router
+from local_bazaar.api import suggestions as suggestions_router
 from local_bazaar.config import settings
 from local_bazaar.scheduler import start_scheduler, stop_scheduler
 
@@ -105,7 +106,7 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_origins_list,
     allow_credentials=True,
-    allow_methods=["GET"],
+    allow_methods=["GET", "POST"],
     allow_headers=["*"],
 )
 
@@ -119,3 +120,4 @@ async def healthz() -> dict[str, str]:
 app.include_router(prices_router.router, prefix="/api", tags=["prices"])
 app.include_router(markets_router.router, prefix="/api", tags=["markets"])
 app.include_router(page_views_router.router, prefix="/api", tags=["page-views"])
+app.include_router(suggestions_router.router, prefix="/api", tags=["suggestions"])

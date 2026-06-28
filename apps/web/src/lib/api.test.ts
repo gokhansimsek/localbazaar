@@ -44,6 +44,9 @@ const server = setupServer(
     "http://api.test/api/cities/unknown/prices",
     () => new HttpResponse("nope", { status: 404 }),
   ),
+  http.post("http://api.test/api/suggestions", () =>
+    HttpResponse.json({ id: 7, status: "pending" }),
+  ),
 );
 
 beforeAll(() => server.listen({ onUnhandledRequest: "error" }));
@@ -78,5 +81,20 @@ describe("api client", () => {
   it("throws a clear error on non-2xx responses", async () => {
     const { cityPrices } = await import("./api");
     await expect(cityPrices("unknown")).rejects.toThrow(/404/);
+  });
+
+  it("submitSuggestion posts to /api/suggestions", async () => {
+    const { submitSuggestion } = await import("./api");
+    const out = await submitSuggestion({
+      first_name: "Ada",
+      last_name: "Yılmaz",
+      email: "ada@example.com",
+      suggestion_type: "add",
+      explanation: "Burada pazar var.",
+      name: "Yeni Pazar",
+      latitude: 41,
+      longitude: 29,
+    });
+    expect(out).toEqual({ id: 7, status: "pending" });
   });
 });

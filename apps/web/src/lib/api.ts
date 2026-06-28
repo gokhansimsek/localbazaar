@@ -152,6 +152,47 @@ export function listPageViews(): Promise<PageView[]> {
   return get<PageView[]>("/api/page-views");
 }
 
+export type SuggestionType = "add" | "update";
+
+// Mirrors SuggestionCreate in apps/api/src/local_bazaar/api/suggestions.py.
+export type SuggestionCreate = {
+  first_name: string;
+  last_name: string;
+  email: string;
+  user_province?: string;
+  user_district?: string;
+  suggestion_type: SuggestionType;
+  explanation: string;
+  // update-only
+  market_id?: number;
+  // add-only
+  name?: string;
+  market_type?: MarketTypeSlug;
+  province?: string;
+  district?: string;
+  latitude?: number;
+  longitude?: number;
+  // Honeypot — always sent empty by the real form.
+  website?: string;
+};
+
+export type SuggestionCreated = {
+  id: number;
+  status: string;
+};
+
+export async function submitSuggestion(data: SuggestionCreate): Promise<SuggestionCreated> {
+  const res = await fetch(`${API_BASE}/api/suggestions`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(data),
+  });
+  if (!res.ok) {
+    throw new Error(`POST /api/suggestions failed: ${res.status} ${res.statusText}`);
+  }
+  return (await res.json()) as SuggestionCreated;
+}
+
 export type HistoryGranularity = "daily" | "weekly" | "monthly";
 
 export function productHistory(
