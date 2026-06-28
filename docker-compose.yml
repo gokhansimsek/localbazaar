@@ -17,6 +17,7 @@ services:
       SCRAPER_DAILY_HOUR: ${SCRAPER_DAILY_HOUR:-2}
       SCRAPER_DISABLE_SCHEDULER: ${SCRAPER_DISABLE_SCHEDULER:-0}
       GOOGLE_MAPS_API_KEY: ${GOOGLE_MAPS_API_KEY:-}
+      ADMIN_TOKEN: ${ADMIN_TOKEN:-}
     ports:
       # Host-loopback only. The API is reached from the web container via the
       # internal Docker network (http://api:8000). Exposing on 127.0.0.1 keeps

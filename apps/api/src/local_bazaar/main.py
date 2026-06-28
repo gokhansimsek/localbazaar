@@ -23,6 +23,7 @@ from slowapi.util import get_remote_address
 from starlette.responses import Response
 
 from local_bazaar import __version__
+from local_bazaar.api import admin as admin_router
 from local_bazaar.api import markets as markets_router
 from local_bazaar.api import page_views as page_views_router
 from local_bazaar.api import prices as prices_router
@@ -121,3 +122,4 @@ app.include_router(prices_router.router, prefix="/api", tags=["prices"])
 app.include_router(markets_router.router, prefix="/api", tags=["markets"])
 app.include_router(page_views_router.router, prefix="/api", tags=["page-views"])
 app.include_router(suggestions_router.router, prefix="/api", tags=["suggestions"])
+app.include_router(admin_router.router, prefix="/api", tags=["admin"])

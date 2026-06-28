@@ -193,6 +193,90 @@ export async function submitSuggestion(data: SuggestionCreate): Promise<Suggesti
   return (await res.json()) as SuggestionCreated;
 }
 
+// --- Hidden admin review surface (token-gated) ----------------------------
+
+export type AdminSuggestion = {
+  id: number;
+  suggestion_type: SuggestionType;
+  status: string;
+  created_at: string;
+  first_name: string;
+  last_name: string;
+  email: string;
+  explanation: string;
+  proposed_name: string | null;
+  proposed_market_type: string | null;
+  latitude: number | null;
+  longitude: number | null;
+  market_id: number | null;
+  market_name: string | null;
+  province: string | null;
+  district: string | null;
+  review_note: string | null;
+};
+
+export type AdminActionResult = {
+  id: number;
+  status: string;
+  market_id: number | null;
+  detail: string;
+};
+
+/** Error thrown by admin calls, carrying the HTTP status for the UI to branch on. */
+export class AdminApiError extends Error {
+  status: number;
+  constructor(status: number, message: string) {
+    super(message);
+    this.name = "AdminApiError";
+    this.status = status;
+  }
+}
+
+async function adminFetch<T>(path: string, token: string, init?: RequestInit): Promise<T> {
+  const res = await fetch(`${API_BASE}${path}`, {
+    ...init,
+    headers: { ...(init?.headers ?? {}), "X-Admin-Token": token },
+  });
+  if (!res.ok) {
+    let detail = res.statusText;
+    try {
+      detail = ((await res.json()) as { detail?: string }).detail ?? detail;
+    } catch {
+      /* non-JSON body */
+    }
+    throw new AdminApiError(res.status, detail);
+  }
+  return (await res.json()) as T;
+}
+
+export function listAdminSuggestions(
+  token: string,
+  status = "pending",
+): Promise<AdminSuggestion[]> {
+  return adminFetch<AdminSuggestion[]>(
+    `/api/admin/suggestions?status=${encodeURIComponent(status)}`,
+    token,
+  );
+}
+
+export function approveSuggestion(token: string, id: number): Promise<AdminActionResult> {
+  return adminFetch<AdminActionResult>(`/api/admin/suggestions/${id}/approve`, token, {
+    method: "POST",
+  });
+}
+
+export function rejectSuggestion(
+  token: string,
+  id: number,
+  note?: string,
+): Promise<AdminActionResult> {
+  return adminFetch<AdminActionResult>(`/api/admin/suggestions/${id}/reject`, token, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ note: note ?? null }),
+  });
+}
+
 export type HistoryGranularity = "daily" | "weekly" | "monthly";
 
 export function productHistory(

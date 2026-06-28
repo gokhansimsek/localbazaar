@@ -42,6 +42,11 @@ class Settings(BaseSettings):
     # Leave empty to disable geocoding (markets will be stored without lat/lng).
     google_maps_api_key: str = ""
 
+    # Shared secret for the hidden /admin/suggestions review page. When empty
+    # (the default) the admin API returns 503 so it can't be used unprotected.
+    # Set ADMIN_TOKEN to a long random string to enable it.
+    admin_token: str = ""
+
     @property
     def cors_origins_list(self) -> list[str]:
         """Split the comma-separated ``api_cors_origins`` env var into a list.

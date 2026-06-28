@@ -10,7 +10,7 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from enum import StrEnum
 
-from sqlalchemy import Column, DateTime, ForeignKey, String, Text, func
+from sqlalchemy import Column, DateTime, ForeignKey, String, Text, UniqueConstraint, func
 from sqlmodel import Field, SQLModel
 
 
@@ -102,6 +102,14 @@ class Market(SQLModel, table=True):
     """One physical market place, geocoded for display on the map."""
 
     __tablename__ = "markets"
+    # Matches the constraint created in migration 0001 so the model-built schema
+    # (used by tests via create_all) agrees with the migrated DB and supports
+    # ``ON CONFLICT (district_id, market_type, name)`` upserts.
+    __table_args__ = (
+        UniqueConstraint(
+            "district_id", "market_type", "name", name="uq_markets_district_type_name"
+        ),
+    )
 
     id: int | None = Field(default=None, primary_key=True)
     district_id: int = Field(

@@ -47,6 +47,12 @@ const server = setupServer(
   http.post("http://api.test/api/suggestions", () =>
     HttpResponse.json({ id: 7, status: "pending" }),
   ),
+  http.get("http://api.test/api/admin/suggestions", ({ request }) => {
+    if (request.headers.get("X-Admin-Token") !== "sek") {
+      return HttpResponse.json({ detail: "Invalid admin token" }, { status: 401 });
+    }
+    return HttpResponse.json([{ id: 1, suggestion_type: "add", status: "pending" }]);
+  }),
 );
 
 beforeAll(() => server.listen({ onUnhandledRequest: "error" }));
@@ -96,5 +102,21 @@ describe("api client", () => {
       longitude: 29,
     });
     expect(out).toEqual({ id: 7, status: "pending" });
+  });
+
+  it("listAdminSuggestions sends the admin token header", async () => {
+    const { listAdminSuggestions } = await import("./api");
+    const out = await listAdminSuggestions("sek");
+    expect(out[0].id).toBe(1);
+  });
+
+  it("admin calls throw AdminApiError with the HTTP status on failure", async () => {
+    const { listAdminSuggestions, AdminApiError } = await import("./api");
+    await expect(listAdminSuggestions("wrong")).rejects.toMatchObject({
+      name: "AdminApiError",
+      status: 401,
+    });
+    // Ensure the export is the real class, too.
+    expect(AdminApiError).toBeTypeOf("function");
   });
 });
