@@ -107,7 +107,12 @@ export function SuggestionForm({
               latitude: draftPin?.lat,
               longitude: draftPin?.lng,
             }
-          : { market_id: selectedMarket?.id }),
+          : {
+              market_id: selectedMarket?.id,
+              // Optional corrected location pinned on the map.
+              latitude: draftPin?.lat,
+              longitude: draftPin?.lng,
+            }),
       });
       setDone(true);
     } catch {
@@ -201,14 +206,24 @@ export function SuggestionForm({
               </Field>
             </div>
           ) : (
-            <p className="text-xs text-ink-muted">
-              Haritadan güncellemek istediğiniz pazarı seçin.{" "}
-              {selectedMarket ? (
-                <span className="text-success">Seçilen: {selectedMarket.name}</span>
-              ) : (
-                <span className="text-danger">Henüz pazar seçilmedi.</span>
-              )}
-            </p>
+            <div className="space-y-1.5">
+              <p className="text-xs text-ink-muted">
+                Haritadan güncellemek istediğiniz pazarı seçin.{" "}
+                {selectedMarket ? (
+                  <span className="text-success">Seçilen: {selectedMarket.name}</span>
+                ) : (
+                  <span className="text-danger">Henüz pazar seçilmedi.</span>
+                )}
+              </p>
+              <p className="text-xs text-ink-muted">
+                İsteğe bağlı: doğru konumu işaretlemek için haritaya tıklayın.{" "}
+                {draftPin && (
+                  <span className="text-success">
+                    Yeni konum: {draftPin.lat.toFixed(5)}, {draftPin.lng.toFixed(5)}
+                  </span>
+                )}
+              </p>
+            </div>
           )}
 
           <Field label="Açıklama">
@@ -223,28 +238,31 @@ export function SuggestionForm({
           </Field>
 
           <div className="grid gap-3 sm:grid-cols-2">
-            <Field label="Ad">
+            <Field label="Ad" required>
               <input
                 type="text"
                 value={firstName}
                 onChange={(e) => setFirstName(e.target.value)}
+                aria-required
                 className={inputCls}
               />
             </Field>
-            <Field label="Soyad">
+            <Field label="Soyad" required>
               <input
                 type="text"
                 value={lastName}
                 onChange={(e) => setLastName(e.target.value)}
+                aria-required
                 className={inputCls}
               />
             </Field>
           </div>
-          <Field label="E-posta">
+          <Field label="E-posta" required>
             <input
               type="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
+              aria-required
               className={inputCls}
             />
           </Field>
@@ -310,10 +328,26 @@ export function SuggestionForm({
 const inputCls =
   "w-full rounded-xl border border-surface-border bg-white px-3 py-2 text-sm text-ink outline-none transition-all focus:border-indigo-400 focus:shadow-ring";
 
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
+function Field({
+  label,
+  required,
+  children,
+}: {
+  label: string;
+  required?: boolean;
+  children: React.ReactNode;
+}) {
   return (
     <label className="flex flex-col gap-1">
-      <span className="text-xs text-ink-muted">{label}</span>
+      <span className="text-xs text-ink-muted">
+        {label}
+        {required && (
+          <span aria-hidden="true" className="text-danger">
+            {" "}
+            *
+          </span>
+        )}
+      </span>
       {children}
     </label>
   );

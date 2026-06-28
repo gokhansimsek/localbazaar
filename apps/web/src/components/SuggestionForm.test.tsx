@@ -86,9 +86,9 @@ describe("SuggestionForm", () => {
         onClose={() => {}}
       />,
     );
-    await user.type(screen.getByLabelText("Ad"), "Ada");
-    await user.type(screen.getByLabelText("Soyad"), "Yılmaz");
-    await user.type(screen.getByLabelText("E-posta"), "ada@example.com");
+    await user.type(screen.getByLabelText(/^Ad/), "Ada");
+    await user.type(screen.getByLabelText(/^Soyad/), "Yılmaz");
+    await user.type(screen.getByLabelText(/^E-posta/), "ada@example.com");
     await user.type(screen.getByLabelText("Yer adı"), "Yeni Pazar");
     await user.type(screen.getByLabelText("Açıklama"), "Burada büyük bir pazar var.");
     await user.click(screen.getByRole("button", { name: "Öneriyi gönder" }));

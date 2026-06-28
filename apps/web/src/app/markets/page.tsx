@@ -316,10 +316,8 @@ export default function MarketsPage() {
         apiKey={apiKey}
         markets={markets}
         focusLabel={focusLabel}
-        onMapClick={
-          showSuggest && suggestMode === "add" ? (lat, lng) => setDraftPin({ lat, lng }) : undefined
-        }
-        draftPin={showSuggest && suggestMode === "add" ? draftPin : null}
+        onMapClick={showSuggest ? (lat, lng) => setDraftPin({ lat, lng }) : undefined}
+        draftPin={showSuggest ? draftPin : null}
         selectable={showSuggest && suggestMode === "update"}
         onSelectMarket={setSelectedMarket}
       />
