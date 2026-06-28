@@ -129,9 +129,7 @@ class SanliurfaScraper:
             try:
                 resp = await fetch_with_retry(client, "GET", _URL, params=params)
             except Exception as exc:
-                log.warning(
-                    "sanliurfa: GET %s product_type_id=%s failed: %s", target, ptype, exc
-                )
+                log.warning("sanliurfa: GET %s product_type_id=%s failed: %s", target, ptype, exc)
                 continue
             for row in _parse_table(resp.text):
                 yield _row_to_price(row, target)
@@ -283,7 +281,7 @@ def _to_decimal(s: str) -> Decimal:
     """
     try:
         return Decimal(_normalize_number(s))
-    except (InvalidOperation, ValueError):
+    except InvalidOperation, ValueError:
         return Decimal(0)
 
 

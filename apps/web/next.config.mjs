@@ -10,9 +10,7 @@ const nextConfig = {
   // exposed to the public internet. API_INTERNAL_URL is read at server start.
   async rewrites() {
     const upstream = (process.env.API_INTERNAL_URL ?? "http://api:8000").replace(/\/$/, "");
-    return [
-      { source: "/api/:path*", destination: `${upstream}/api/:path*` },
-    ];
+    return [{ source: "/api/:path*", destination: `${upstream}/api/:path*` }];
   },
 };
 

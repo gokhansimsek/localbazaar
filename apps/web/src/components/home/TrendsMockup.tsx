@@ -32,7 +32,7 @@ export function TrendsMockup() {
               Domates · Yuvarlak
             </div>
             <div className="mt-1.5 flex items-baseline gap-2">
-              <span className="font-display text-[26px] font-semibold tracking-[-0.02em] text-ink tabular-nums">
+              <span className="font-display text-[26px] font-semibold tabular-nums tracking-[-0.02em] text-ink">
                 32,40 ₺
               </span>
               <span className="rounded-md bg-success/10 px-1.5 py-0.5 font-mono text-[10.5px] font-semibold text-success">

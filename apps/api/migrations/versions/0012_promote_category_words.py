@@ -68,9 +68,9 @@ def upgrade() -> None:
     """Promote stray category words and merge resulting duplicates."""
     conn = op.get_bind()
     cities: list[str] = list(
-        conn.execute(
-            sa.text("SELECT slug FROM cities WHERE enabled = true ORDER BY slug")
-        ).scalars().all()
+        conn.execute(sa.text("SELECT slug FROM cities WHERE enabled = true ORDER BY slug"))
+        .scalars()
+        .all()
     )
 
     rows = conn.execute(
@@ -80,9 +80,7 @@ def upgrade() -> None:
     resolved: list[tuple[int, str, str, str, str]] = []
     for pid, name, variety, category, unit in rows:
         new_name, new_variety, new_category = promote_category_words(name, variety, category)
-        resolved.append(
-            (pid, new_name, new_variety or "", new_category, unit)
-        )
+        resolved.append((pid, new_name, new_variety or "", new_category, unit))
 
     resolved.sort(key=lambda r: r[0])
     canonical: dict[tuple[str, str, str, str], int] = {}

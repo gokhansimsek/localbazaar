@@ -1,6 +1,13 @@
 import { ArrowDownRight, ArrowUpRight } from "lucide-react";
 
-type Row = { name: string; variety: string; price: string; unit: string; change: string; dir: "up" | "down" };
+type Row = {
+  name: string;
+  variety: string;
+  price: string;
+  unit: string;
+  change: string;
+  dir: "up" | "down";
+};
 
 const ROWS: Row[] = [
   { name: "Domates", variety: "Yuvarlak", price: "32,40", unit: "Kg", change: "+2,1%", dir: "up" },

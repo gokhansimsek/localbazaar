@@ -7,6 +7,8 @@ autogenerate, and exposes a sync wrapper around the async engine for offline-mod
 from __future__ import annotations
 
 import asyncio
+import selectors
+import sys
 from logging.config import fileConfig
 
 from alembic import context
@@ -54,7 +56,23 @@ async def run_migrations_online() -> None:
     await connectable.dispose()
 
 
+def _run_online() -> None:
+    """Run online migrations on an event loop psycopg can use.
+
+    On Windows the default ``ProactorEventLoop`` is incompatible with
+    psycopg's async mode, so we run on a ``SelectorEventLoop`` there. Other
+    platforms use the default loop.
+    """
+    if sys.platform == "win32":
+        asyncio.run(
+            run_migrations_online(),
+            loop_factory=lambda: asyncio.SelectorEventLoop(selectors.SelectSelector()),
+        )
+    else:
+        asyncio.run(run_migrations_online())
+
+
 if context.is_offline_mode():
     run_migrations_offline()
 else:
-    asyncio.run(run_migrations_online())
+    _run_online()

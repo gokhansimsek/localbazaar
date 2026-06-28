@@ -122,14 +122,18 @@ async def list_views(session: AsyncSession = Depends(get_session)) -> list[PageV
         pinged are not present in the table and therefore not returned.
     """
     rows = (
-        await session.execute(
-            text(
-                """
+        (
+            await session.execute(
+                text(
+                    """
                 SELECT path, visit_count, first_visited_at, last_visited_at
                 FROM page_views
                 ORDER BY visit_count DESC, path ASC
                 """
+                )
             )
         )
-    ).mappings().all()
+        .mappings()
+        .all()
+    )
     return [PageViewOut(**dict(r)) for r in rows]

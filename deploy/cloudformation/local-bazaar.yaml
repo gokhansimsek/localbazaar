@@ -1,0 +1,516 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: >-
+  Semt Pazari (local-bazaar) — two-tier EC2 deployment.
+  Public UI instance behind an ALB (ACM/TLS), private API instance,
+  private PostgreSQL 17 RDS, NAT Gateway egress, Route53 alias record.
+
+# ---------------------------------------------------------------------------
+# Parameters
+# ---------------------------------------------------------------------------
+Parameters:
+  HostedZoneId:
+    Type: AWS::Route53::HostedZone::Id
+    Description: Existing Route53 public hosted zone ID for the domain.
+
+  DomainName:
+    Type: String
+    Description: Apex domain of the hosted zone (e.g. example.com). No trailing dot.
+    AllowedPattern: "^(?!-)[A-Za-z0-9-]{1,63}(\\.[A-Za-z0-9-]{1,63})+$"
+
+  SubDomain:
+    Type: String
+    Default: app
+    Description: Subdomain label for the public UI (UI served at <SubDomain>.<DomainName>).
+    AllowedPattern: "^[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?$"
+
+  InstanceType:
+    Type: String
+    Default: t4g.nano
+    AllowedValues:
+      - t4g.nano
+      - t4g.micro
+      - t4g.small
+    Description: EC2 instance type for both UI and API (Graviton/arm64).
+
+  DBInstanceClass:
+    Type: String
+    Default: db.t4g.micro
+    AllowedValues:
+      - db.t4g.micro
+      - db.t4g.small
+    Description: RDS instance class (minimum sizes).
+
+  DBAllocatedStorage:
+    Type: Number
+    Default: 20
+    MinValue: 20
+    MaxValue: 100
+    Description: RDS allocated storage in GiB (gp3).
+
+  DBName:
+    Type: String
+    Default: local_bazaar
+    AllowedPattern: "^[A-Za-z][A-Za-z0-9_]{0,62}$"
+    Description: Initial database name.
+
+  DBMasterUsername:
+    Type: String
+    Default: local_bazaar
+    AllowedPattern: "^[A-Za-z][A-Za-z0-9_]{0,62}$"
+    Description: RDS master username (password is auto-managed in Secrets Manager).
+
+  KeyName:
+    Type: String
+    Default: ""
+    Description: Optional EC2 key pair name for SSH. Leave blank to rely on SSM Session Manager only.
+
+  AmiId:
+    Type: AWS::SSM::Parameter::Value<AWS::EC2::Image::Id>
+    Default: /aws/service/ami-amazon-linux-latest/al2023-ami-kernel-default-arm64
+    Description: Latest Amazon Linux 2023 arm64 AMI (resolved from SSM Public Parameters).
+
+  VpcCidr:
+    Type: String
+    Default: 10.0.0.0/16
+    Description: CIDR block for the VPC.
+
+# ---------------------------------------------------------------------------
+# Conditions
+# ---------------------------------------------------------------------------
+Conditions:
+  HasKeyName: !Not [!Equals [!Ref KeyName, ""]]
+
+# ---------------------------------------------------------------------------
+# Resources
+# ---------------------------------------------------------------------------
+Resources:
+
+  # ----- Networking -------------------------------------------------------
+  Vpc:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: !Ref VpcCidr
+      EnableDnsSupport: true
+      EnableDnsHostnames: true
+      Tags:
+        - { Key: Name, Value: !Sub "${AWS::StackName}-vpc" }
+        - { Key: "app.kubernetes.io/part-of", Value: local-bazaar }
+
+  InternetGateway:
+    Type: AWS::EC2::InternetGateway
+    Properties:
+      Tags:
+        - { Key: Name, Value: !Sub "${AWS::StackName}-igw" }
+
+  VpcGatewayAttachment:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      VpcId: !Ref Vpc
+      InternetGatewayId: !Ref InternetGateway
+
+  PublicSubnetA:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref Vpc
+      AvailabilityZone: !Select [0, !GetAZs ""]
+      CidrBlock: !Select [0, !Cidr [!Ref VpcCidr, 4, 8]]
+      MapPublicIpOnLaunch: true
+      Tags:
+        - { Key: Name, Value: !Sub "${AWS::StackName}-public-a" }
+
+  PublicSubnetB:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref Vpc
+      AvailabilityZone: !Select [1, !GetAZs ""]
+      CidrBlock: !Select [1, !Cidr [!Ref VpcCidr, 4, 8]]
+      MapPublicIpOnLaunch: true
+      Tags:
+        - { Key: Name, Value: !Sub "${AWS::StackName}-public-b" }
+
+  PrivateSubnetA:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref Vpc
+      AvailabilityZone: !Select [0, !GetAZs ""]
+      CidrBlock: !Select [2, !Cidr [!Ref VpcCidr, 4, 8]]
+      MapPublicIpOnLaunch: false
+      Tags:
+        - { Key: Name, Value: !Sub "${AWS::StackName}-private-a" }
+
+  PrivateSubnetB:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref Vpc
+      AvailabilityZone: !Select [1, !GetAZs ""]
+      CidrBlock: !Select [3, !Cidr [!Ref VpcCidr, 4, 8]]
+      MapPublicIpOnLaunch: false
+      Tags:
+        - { Key: Name, Value: !Sub "${AWS::StackName}-private-b" }
+
+  # NAT Gateway (single, in PublicSubnetA) for private-subnet egress.
+  NatEip:
+    Type: AWS::EC2::EIP
+    DependsOn: VpcGatewayAttachment
+    Properties:
+      Domain: vpc
+      Tags:
+        - { Key: Name, Value: !Sub "${AWS::StackName}-nat-eip" }
+
+  NatGateway:
+    Type: AWS::EC2::NatGateway
+    Properties:
+      AllocationId: !GetAtt NatEip.AllocationId
+      SubnetId: !Ref PublicSubnetA
+      Tags:
+        - { Key: Name, Value: !Sub "${AWS::StackName}-nat" }
+
+  PublicRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref Vpc
+      Tags:
+        - { Key: Name, Value: !Sub "${AWS::StackName}-public-rt" }
+
+  PublicDefaultRoute:
+    Type: AWS::EC2::Route
+    DependsOn: VpcGatewayAttachment
+    Properties:
+      RouteTableId: !Ref PublicRouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref InternetGateway
+
+  PublicSubnetARouteAssoc:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref PublicRouteTable
+      SubnetId: !Ref PublicSubnetA
+
+  PublicSubnetBRouteAssoc:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref PublicRouteTable
+      SubnetId: !Ref PublicSubnetB
+
+  PrivateRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref Vpc
+      Tags:
+        - { Key: Name, Value: !Sub "${AWS::StackName}-private-rt" }
+
+  PrivateDefaultRoute:
+    Type: AWS::EC2::Route
+    Properties:
+      RouteTableId: !Ref PrivateRouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      NatGatewayId: !Ref NatGateway
+
+  PrivateSubnetARouteAssoc:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref PrivateRouteTable
+      SubnetId: !Ref PrivateSubnetA
+
+  PrivateSubnetBRouteAssoc:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref PrivateRouteTable
+      SubnetId: !Ref PrivateSubnetB
+
+  # ----- Security groups --------------------------------------------------
+  AlbSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: ALB — public 80/443.
+      VpcId: !Ref Vpc
+      SecurityGroupIngress:
+        - { IpProtocol: tcp, FromPort: 80, ToPort: 80, CidrIp: 0.0.0.0/0, Description: HTTP }
+        - { IpProtocol: tcp, FromPort: 443, ToPort: 443, CidrIp: 0.0.0.0/0, Description: HTTPS }
+      Tags:
+        - { Key: Name, Value: !Sub "${AWS::StackName}-alb-sg" }
+
+  UiSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: UI instance — app port from ALB only.
+      VpcId: !Ref Vpc
+      Tags:
+        - { Key: Name, Value: !Sub "${AWS::StackName}-ui-sg" }
+
+  ApiSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: API instance — app port from UI only.
+      VpcId: !Ref Vpc
+      Tags:
+        - { Key: Name, Value: !Sub "${AWS::StackName}-api-sg" }
+
+  DbSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: RDS — PostgreSQL from API only.
+      VpcId: !Ref Vpc
+      Tags:
+        - { Key: Name, Value: !Sub "${AWS::StackName}-db-sg" }
+
+  # Ingress rules declared separately to avoid circular SG references.
+  UiIngressFromAlb:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      GroupId: !Ref UiSecurityGroup
+      IpProtocol: tcp
+      FromPort: 3000
+      ToPort: 3000
+      SourceSecurityGroupId: !Ref AlbSecurityGroup
+      Description: Next.js UI from ALB
+
+  ApiIngressFromUi:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      GroupId: !Ref ApiSecurityGroup
+      IpProtocol: tcp
+      FromPort: 8000
+      ToPort: 8000
+      SourceSecurityGroupId: !Ref UiSecurityGroup
+      Description: FastAPI from UI
+
+  DbIngressFromApi:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      GroupId: !Ref DbSecurityGroup
+      IpProtocol: tcp
+      FromPort: 5432
+      ToPort: 5432
+      SourceSecurityGroupId: !Ref ApiSecurityGroup
+      Description: PostgreSQL from API
+
+  # ----- IAM (SSM Session Manager, no bastion needed) ---------------------
+  InstanceRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal: { Service: ec2.amazonaws.com }
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore
+      Policies:
+        - PolicyName: read-db-secret
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - secretsmanager:GetSecretValue
+                Resource: !GetAtt Database.MasterUserSecret.SecretArn
+      Tags:
+        - { Key: Name, Value: !Sub "${AWS::StackName}-instance-role" }
+
+  InstanceProfile:
+    Type: AWS::IAM::InstanceProfile
+    Properties:
+      Roles: [!Ref InstanceRole]
+
+  # ----- Compute ----------------------------------------------------------
+  UiInstance:
+    Type: AWS::EC2::Instance
+    Properties:
+      InstanceType: !Ref InstanceType
+      ImageId: !Ref AmiId
+      IamInstanceProfile: !Ref InstanceProfile
+      KeyName: !If [HasKeyName, !Ref KeyName, !Ref "AWS::NoValue"]
+      SubnetId: !Ref PublicSubnetA
+      SecurityGroupIds: [!Ref UiSecurityGroup]
+      BlockDeviceMappings:
+        - DeviceName: /dev/xvda
+          Ebs: { VolumeSize: 20, VolumeType: gp3, Encrypted: true }
+      UserData:
+        Fn::Base64: !Sub |
+          #!/bin/bash
+          set -euxo pipefail
+          dnf update -y
+          dnf install -y docker
+          systemctl enable --now docker
+          # Deploy the Next.js UI container here, e.g.:
+          # docker run -d --restart=always -p 3000:3000 \
+          #   -e API_INTERNAL_URL="http://${ApiInstance.PrivateIp}:8000" \
+          #   <your-ecr-repo>/local-bazaar-web:latest
+      Tags:
+        - { Key: Name, Value: !Sub "${AWS::StackName}-ui" }
+        - { Key: tier, Value: web }
+
+  ApiInstance:
+    Type: AWS::EC2::Instance
+    Properties:
+      InstanceType: !Ref InstanceType
+      ImageId: !Ref AmiId
+      IamInstanceProfile: !Ref InstanceProfile
+      KeyName: !If [HasKeyName, !Ref KeyName, !Ref "AWS::NoValue"]
+      SubnetId: !Ref PrivateSubnetA
+      SecurityGroupIds: [!Ref ApiSecurityGroup]
+      BlockDeviceMappings:
+        - DeviceName: /dev/xvda
+          Ebs: { VolumeSize: 20, VolumeType: gp3, Encrypted: true }
+      UserData:
+        Fn::Base64: !Sub |
+          #!/bin/bash
+          set -euxo pipefail
+          dnf update -y
+          dnf install -y docker jq
+          systemctl enable --now docker
+          # DB credentials live in Secrets Manager (managed by RDS):
+          #   SECRET=$(aws secretsmanager get-secret-value --secret-id ${Database.MasterUserSecret.SecretArn} \
+          #     --query SecretString --output text --region ${AWS::Region})
+          #   DB_USER=$(echo "$SECRET" | jq -r .username)
+          #   DB_PASS=$(echo "$SECRET" | jq -r .password)
+          # Deploy the FastAPI container here, e.g.:
+          # docker run -d --restart=always -p 8000:8000 \
+          #   -e DATABASE_URL="postgresql+psycopg://$DB_USER:$DB_PASS@${Database.Endpoint.Address}:5432/${DBName}" \
+          #   <your-ecr-repo>/local-bazaar-api:latest
+      Tags:
+        - { Key: Name, Value: !Sub "${AWS::StackName}-api" }
+        - { Key: tier, Value: app }
+
+  # ----- Database ---------------------------------------------------------
+  DbSubnetGroup:
+    Type: AWS::RDS::DBSubnetGroup
+    Properties:
+      DBSubnetGroupDescription: Private subnets for RDS.
+      SubnetIds: [!Ref PrivateSubnetA, !Ref PrivateSubnetB]
+      Tags:
+        - { Key: Name, Value: !Sub "${AWS::StackName}-db-subnets" }
+
+  Database:
+    Type: AWS::RDS::DBInstance
+    DeletionPolicy: Snapshot
+    UpdateReplacePolicy: Snapshot
+    Properties:
+      Engine: postgres
+      EngineVersion: "17"
+      DBInstanceClass: !Ref DBInstanceClass
+      AllocatedStorage: !Ref DBAllocatedStorage
+      StorageType: gp3
+      StorageEncrypted: true
+      DBName: !Ref DBName
+      MasterUsername: !Ref DBMasterUsername
+      ManageMasterUserPassword: true # auto-generates + rotates in Secrets Manager
+      DBSubnetGroupName: !Ref DbSubnetGroup
+      VPCSecurityGroups: [!Ref DbSecurityGroup]
+      MultiAZ: false
+      PubliclyAccessible: false
+      BackupRetentionPeriod: 7
+      DeletionProtection: false
+      Tags:
+        - { Key: Name, Value: !Sub "${AWS::StackName}-db" }
+
+  # ----- ACM certificate (DNS-validated via the hosted zone) --------------
+  Certificate:
+    Type: AWS::CertificateManager::Certificate
+    Properties:
+      DomainName: !Sub "${SubDomain}.${DomainName}"
+      ValidationMethod: DNS
+      DomainValidationOptions:
+        - DomainName: !Sub "${SubDomain}.${DomainName}"
+          HostedZoneId: !Ref HostedZoneId
+      Tags:
+        - { Key: Name, Value: !Sub "${AWS::StackName}-cert" }
+
+  # ----- Application Load Balancer ----------------------------------------
+  LoadBalancer:
+    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+    Properties:
+      Type: application
+      Scheme: internet-facing
+      SecurityGroups: [!Ref AlbSecurityGroup]
+      Subnets: [!Ref PublicSubnetA, !Ref PublicSubnetB]
+      Tags:
+        - { Key: Name, Value: !Sub "${AWS::StackName}-alb" }
+
+  UiTargetGroup:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      VpcId: !Ref Vpc
+      Protocol: HTTP
+      Port: 3000
+      TargetType: instance
+      HealthCheckPath: /
+      HealthCheckProtocol: HTTP
+      Matcher: { HttpCode: 200-399 }
+      Targets:
+        - Id: !Ref UiInstance
+          Port: 3000
+      Tags:
+        - { Key: Name, Value: !Sub "${AWS::StackName}-ui-tg" }
+
+  HttpsListener:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      LoadBalancerArn: !Ref LoadBalancer
+      Protocol: HTTPS
+      Port: 443
+      Certificates:
+        - CertificateArn: !Ref Certificate
+      SslPolicy: ELBSecurityPolicy-TLS13-1-2-2021-06
+      DefaultActions:
+        - Type: forward
+          TargetGroupArn: !Ref UiTargetGroup
+
+  HttpRedirectListener:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      LoadBalancerArn: !Ref LoadBalancer
+      Protocol: HTTP
+      Port: 80
+      DefaultActions:
+        - Type: redirect
+          RedirectConfig:
+            Protocol: HTTPS
+            Port: "443"
+            StatusCode: HTTP_301
+
+  # ----- Route53 alias to the ALB -----------------------------------------
+  UiDnsRecord:
+    Type: AWS::Route53::RecordSet
+    Properties:
+      HostedZoneId: !Ref HostedZoneId
+      Name: !Sub "${SubDomain}.${DomainName}."
+      Type: A
+      AliasTarget:
+        DNSName: !GetAtt LoadBalancer.DNSName
+        HostedZoneId: !GetAtt LoadBalancer.CanonicalHostedZoneID
+        EvaluateTargetHealth: true
+
+# ---------------------------------------------------------------------------
+# Outputs
+# ---------------------------------------------------------------------------
+Outputs:
+  SiteUrl:
+    Description: Public UI URL.
+    Value: !Sub "https://${SubDomain}.${DomainName}"
+
+  LoadBalancerDnsName:
+    Description: ALB DNS name.
+    Value: !GetAtt LoadBalancer.DNSName
+
+  UiInstanceId:
+    Description: UI EC2 instance ID (public subnet).
+    Value: !Ref UiInstance
+
+  ApiInstanceId:
+    Description: API EC2 instance ID (private subnet) — connect via SSM Session Manager.
+    Value: !Ref ApiInstance
+
+  ApiPrivateIp:
+    Description: Private IP of the API instance (used by the UI for API_INTERNAL_URL).
+    Value: !GetAtt ApiInstance.PrivateIp
+
+  DbEndpoint:
+    Description: RDS PostgreSQL endpoint address.
+    Value: !GetAtt Database.Endpoint.Address
+
+  DbSecretArn:
+    Description: Secrets Manager ARN holding the RDS master credentials.
+    Value: !GetAtt Database.MasterUserSecret.SecretArn

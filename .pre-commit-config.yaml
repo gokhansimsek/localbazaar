@@ -17,6 +17,12 @@ repos:
       - id: trailing-whitespace
       - id: end-of-file-fixer
       - id: check-yaml
+        # Kubernetes manifests use multi-document streams (--- separators).
+        args: [--allow-multiple-documents]
+        # CloudFormation templates use intrinsic-function short tags
+        # (!Ref, !Sub, !Not, !GetAtt, …) that a generic YAML loader can't
+        # construct; they're validated by AWS, not this hook.
+        exclude: ^deploy/cloudformation/
       - id: check-added-large-files
         args: [--maxkb=512]
       - id: check-merge-conflict
@@ -26,7 +32,7 @@ repos:
 
   # --- Python: ruff (lint + format) ------------------------------------
   - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.7.4
+    rev: v0.15.12
     hooks:
       - id: ruff
         name: ruff lint (apps/api)
@@ -53,7 +59,7 @@ repos:
   # Uses pyrightconfig.json at the repo root so Pylance and pre-commit pyright
   # see the same settings.
   - repo: https://github.com/RobertCraigie/pyright-python
-    rev: v1.1.390
+    rev: v1.1.411
     hooks:
       - id: pyright
         name: pyright (apps/api)

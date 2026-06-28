@@ -64,9 +64,11 @@ def _table_exists(conn: sa.engine.Connection, table_name: str) -> bool:
 def upgrade() -> None:
     """Delete fish/seafood/imported rows from every prices_<slug> table."""
     conn = op.get_bind()
-    cities = conn.execute(
-        sa.text("SELECT slug FROM cities WHERE enabled = true ORDER BY slug")
-    ).scalars().all()
+    cities = (
+        conn.execute(sa.text("SELECT slug FROM cities WHERE enabled = true ORDER BY slug"))
+        .scalars()
+        .all()
+    )
 
     for slug in cities:
         table_name = f"prices_{slug}"
@@ -76,9 +78,9 @@ def upgrade() -> None:
         # Pass 1 — find every fish/seafood product name in this table and
         # delete its rows. We pull the distinct product_name list into Python
         # so :func:`is_fish_name` can use the same logic the scrapers do.
-        distinct_names = conn.execute(
-            sa.text(f"SELECT DISTINCT product_name FROM {table_name}")
-        ).scalars().all()
+        distinct_names = (
+            conn.execute(sa.text(f"SELECT DISTINCT product_name FROM {table_name}")).scalars().all()
+        )
         fish_names = [n for n in distinct_names if is_fish_name(n)]
         if fish_names:
             conn.execute(
@@ -90,10 +92,7 @@ def upgrade() -> None:
         # Bursa), drop rows whose category isn't Meyve or Sebze.
         for hint in _NON_PRODUCE_CATEGORY_HINTS:
             conn.execute(
-                sa.text(
-                    f"DELETE FROM {table_name} "
-                    f"WHERE LOWER(product_category) = LOWER(:hint)"
-                ),
+                sa.text(f"DELETE FROM {table_name} WHERE LOWER(product_category) = LOWER(:hint)"),
                 {"hint": hint},
             )
 

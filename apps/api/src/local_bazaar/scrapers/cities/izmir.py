@@ -233,7 +233,7 @@ def _to_decimal(s: str) -> Decimal:
     """
     try:
         return Decimal(_normalize_number(s))
-    except (InvalidOperation, ValueError):
+    except InvalidOperation, ValueError:
         return Decimal(0)
 
 

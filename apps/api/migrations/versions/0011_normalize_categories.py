@@ -91,9 +91,9 @@ def upgrade() -> None:
     """Canonicalize categories and merge resulting duplicates."""
     conn = op.get_bind()
     cities: list[str] = list(
-        conn.execute(
-            sa.text("SELECT slug FROM cities WHERE enabled = true ORDER BY slug")
-        ).scalars().all()
+        conn.execute(sa.text("SELECT slug FROM cities WHERE enabled = true ORDER BY slug"))
+        .scalars()
+        .all()
     )
 
     rows = conn.execute(
@@ -127,8 +127,7 @@ def upgrade() -> None:
             continue
         conn.execute(
             sa.text(
-                "UPDATE products SET category = :c "
-                "WHERE id = :pid AND COALESCE(category, '') <> :c"
+                "UPDATE products SET category = :c WHERE id = :pid AND COALESCE(category, '') <> :c"
             ),
             {"pid": pid, "c": new_category},
         )

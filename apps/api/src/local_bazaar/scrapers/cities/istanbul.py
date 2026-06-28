@@ -383,12 +383,7 @@ def _normalize_number(s: str) -> str:
     Returns:
         A string suitable for :class:`~decimal.Decimal` (e.g. ``"155.00"``).
     """
-    cleaned = (
-        s.replace(_NBSP, "")
-        .replace("TL", "")
-        .replace("₺", "")
-        .replace(" ", "")
-    )
+    cleaned = s.replace(_NBSP, "").replace("TL", "").replace("₺", "").replace(" ", "")
     # Turkish format: thousands separator '.', decimal separator ','.
     cleaned = cleaned.replace(".", "").replace(",", ".")
     return cleaned

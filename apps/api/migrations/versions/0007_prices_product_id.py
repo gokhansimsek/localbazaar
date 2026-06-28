@@ -112,9 +112,7 @@ def _backfill_table(conn: sa.engine.Connection, table_name: str) -> tuple[int, i
     Returns:
         A ``(distinct_tuples, inserted_products)`` count for diagnostics.
     """
-    conn.execute(
-        sa.text(f"ALTER TABLE {table_name} ADD COLUMN IF NOT EXISTS product_id BIGINT")
-    )
+    conn.execute(sa.text(f"ALTER TABLE {table_name} ADD COLUMN IF NOT EXISTS product_id BIGINT"))
 
     distinct_rows = conn.execute(
         sa.text(
@@ -168,9 +166,11 @@ def upgrade() -> None:
 
     # Drop the old uniqueness rule on products so on-conflict upserts work.
     # The COALESCE-based index from 0006 stays in place.
-    cities = conn.execute(
-        sa.text("SELECT slug FROM cities WHERE enabled = true ORDER BY slug")
-    ).scalars().all()
+    cities = (
+        conn.execute(sa.text("SELECT slug FROM cities WHERE enabled = true ORDER BY slug"))
+        .scalars()
+        .all()
+    )
 
     for slug in cities:
         table_name = f"prices_{slug}"
@@ -197,15 +197,19 @@ def upgrade() -> None:
 def downgrade() -> None:
     """Drop ``product_id`` from every ``prices_<slug>`` table."""
     conn = op.get_bind()
-    cities = conn.execute(
-        sa.text("SELECT slug FROM cities WHERE enabled = true ORDER BY slug")
-    ).scalars().all()
+    cities = (
+        conn.execute(sa.text("SELECT slug FROM cities WHERE enabled = true ORDER BY slug"))
+        .scalars()
+        .all()
+    )
     for slug in cities:
         table_name = f"prices_{slug}"
         if not _table_exists(conn, table_name):
             continue
         conn.execute(sa.text(f"DROP INDEX IF EXISTS ix_{table_name}_product_id"))
         conn.execute(
-            sa.text(f"ALTER TABLE {table_name} DROP CONSTRAINT IF EXISTS fk_{table_name}_product_id")
+            sa.text(
+                f"ALTER TABLE {table_name} DROP CONSTRAINT IF EXISTS fk_{table_name}_product_id"
+            )
         )
         conn.execute(sa.text(f"ALTER TABLE {table_name} DROP COLUMN IF EXISTS product_id"))

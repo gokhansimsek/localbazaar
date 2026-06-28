@@ -107,9 +107,7 @@ class AdanaScraper:
                     total += wrote
                     log.info("adana: %s (id=%s) wrote %d rows", entry_date, detail_id, wrote)
                 else:
-                    log.info(
-                        "adana: %s (id=%s) no rows (detail empty)", entry_date, detail_id
-                    )
+                    log.info("adana: %s (id=%s) no rows (detail empty)", entry_date, detail_id)
                 await asyncio.sleep(self.request_sleep)
         return total
 
@@ -349,7 +347,7 @@ def _to_decimal(s: str) -> Decimal:
     """
     try:
         return Decimal(_normalize_number(s))
-    except (InvalidOperation, ValueError):
+    except InvalidOperation, ValueError:
         return Decimal(0)
 
 

@@ -161,10 +161,7 @@ async def ensure_city_table(session: AsyncSession, slug: str) -> None:
         )
     )
     await session.execute(
-        text(
-            f"CREATE INDEX IF NOT EXISTS ix_{table.name}_product_id "
-            f"ON {table.name} (product_id)"
-        )
+        text(f"CREATE INDEX IF NOT EXISTS ix_{table.name}_product_id ON {table.name} (product_id)")
     )
 
 

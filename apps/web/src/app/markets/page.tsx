@@ -181,9 +181,7 @@ export default function MarketsPage() {
         </button>
       </header>
 
-      {locationError && (
-        <div className="card p-3 text-xs text-danger">{locationError}</div>
-      )}
+      {locationError && <div className="card p-3 text-xs text-danger">{locationError}</div>}
 
       <section className="grid gap-3 sm:grid-cols-3">
         <FilterSelect label="İl" value={province} onChange={setProvince}>
@@ -276,9 +274,7 @@ export default function MarketsPage() {
         </div>
       )}
 
-      {loading && (
-        <div className="card p-3 text-center text-xs text-ink-muted">Yükleniyor…</div>
-      )}
+      {loading && <div className="card p-3 text-center text-xs text-ink-muted">Yükleniyor…</div>}
       <MarketsMap apiKey={apiKey} markets={markets} focusLabel={focusLabel} />
     </div>
   );

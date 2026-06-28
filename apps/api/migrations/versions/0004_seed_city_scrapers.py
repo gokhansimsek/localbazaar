@@ -59,6 +59,7 @@ def downgrade() -> None:
     """Remove the per-city scraper rows. Per-city tables (if created) are left in place."""
     slugs = tuple(s for s, _, _ in _CITIES)
     op.execute(
-        sa.text("DELETE FROM cities WHERE slug = ANY(:slugs) AND source_type = 'city_site'")
-        .bindparams(sa.bindparam("slugs", value=list(slugs), expanding=True))
+        sa.text(
+            "DELETE FROM cities WHERE slug = ANY(:slugs) AND source_type = 'city_site'"
+        ).bindparams(sa.bindparam("slugs", value=list(slugs), expanding=True))
     )

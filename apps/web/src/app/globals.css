@@ -34,41 +34,94 @@
 
 @layer utilities {
   @keyframes mapPulse {
-    0% { transform: translate(-50%,-50%) scale(0.6); opacity: 0.55; }
-    100% { transform: translate(-50%,-50%) scale(3.4); opacity: 0; }
+    0% {
+      transform: translate(-50%, -50%) scale(0.6);
+      opacity: 0.55;
+    }
+    100% {
+      transform: translate(-50%, -50%) scale(3.4);
+      opacity: 0;
+    }
   }
   @keyframes mapDotPulse {
-    0%, 100% { transform: scale(1); }
-    50% { transform: scale(1.25); }
+    0%,
+    100% {
+      transform: scale(1);
+    }
+    50% {
+      transform: scale(1.25);
+    }
   }
   @keyframes mapScan {
-    0% { transform: translateX(0); opacity: 0; }
-    25% { opacity: 0.55; }
-    75% { opacity: 0.55; }
-    100% { transform: translateX(400%); opacity: 0; }
+    0% {
+      transform: translateX(0);
+      opacity: 0;
+    }
+    25% {
+      opacity: 0.55;
+    }
+    75% {
+      opacity: 0.55;
+    }
+    100% {
+      transform: translateX(400%);
+      opacity: 0;
+    }
   }
   @keyframes tooltipFloat {
-    0%, 100% { transform: translate(-50%, 0); }
-    50% { transform: translate(-50%, -6px); }
+    0%,
+    100% {
+      transform: translate(-50%, 0);
+    }
+    50% {
+      transform: translate(-50%, -6px);
+    }
   }
   @keyframes priceScroll {
-    0% { transform: translateY(0); }
-    100% { transform: translateY(-50%); }
+    0% {
+      transform: translateY(0);
+    }
+    100% {
+      transform: translateY(-50%);
+    }
   }
   @keyframes sparkDraw {
-    0% { stroke-dashoffset: 600; }
-    55% { stroke-dashoffset: 0; }
-    100% { stroke-dashoffset: 0; }
+    0% {
+      stroke-dashoffset: 600;
+    }
+    55% {
+      stroke-dashoffset: 0;
+    }
+    100% {
+      stroke-dashoffset: 0;
+    }
   }
   @keyframes sparkDot {
-    0% { opacity: 0; transform: translateX(-300px); }
-    55% { opacity: 1; transform: translateX(0); }
-    90% { opacity: 1; transform: translateX(0); }
-    100% { opacity: 0; transform: translateX(0); }
+    0% {
+      opacity: 0;
+      transform: translateX(-300px);
+    }
+    55% {
+      opacity: 1;
+      transform: translateX(0);
+    }
+    90% {
+      opacity: 1;
+      transform: translateX(0);
+    }
+    100% {
+      opacity: 0;
+      transform: translateX(0);
+    }
   }
   @keyframes barRise {
-    0% { transform: scaleY(0); }
-    35%, 100% { transform: scaleY(1); }
+    0% {
+      transform: scaleY(0);
+    }
+    35%,
+    100% {
+      transform: scaleY(1);
+    }
   }
 }
 

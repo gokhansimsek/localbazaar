@@ -113,6 +113,7 @@ _COMPOUND_NAMES: frozenset[str] = frozenset(
         "Kabak Çiçeği",
         "Frenk Üzümü",
         "Hardal Otu",
+        "Turp Otu",
         "Kara Koruğu",
         "Kudret Narı",
         "Tere Filizi",
@@ -319,7 +320,7 @@ def _clean_variety(variety: str, name: str) -> str | None:
         return None
     name_first = name.split()[0] if name else ""
     if name_first and (v.startswith(f"{name_first} ") or v.startswith(f"{name_first},")):
-        v = v[len(name_first):].lstrip(", ")
+        v = v[len(name_first) :].lstrip(", ")
     if not v:
         return None
     words = v.split()
@@ -501,7 +502,18 @@ _FISH_SUBSTRINGS: tuple[str, ...] = (
 # Turkish possessive / genitive suffixes that get appended to species words,
 # e.g. ``Somon → Somonu``, ``Sazan → Sazanı``, ``Mercan → Mercanı``. Used by
 # :func:`is_fish_name` to match suffixed forms without exploding the dictionary.
-_TR_POSSESSIVE_SUFFIXES: tuple[str, ...] = ("u", "ü", "ı", "i", "su", "sü", "sı", "si", "ları", "leri")
+_TR_POSSESSIVE_SUFFIXES: tuple[str, ...] = (
+    "u",
+    "ü",
+    "ı",
+    "i",
+    "su",
+    "sü",
+    "sı",
+    "si",
+    "ları",
+    "leri",
+)
 
 
 def _fold_dotted_i(s: str) -> str:
@@ -521,9 +533,7 @@ def _fold_dotted_i(s: str) -> str:
     return s.replace("ı", "i")
 
 
-_FISH_NAMES_FOLDED: frozenset[str] = frozenset(
-    _fold_dotted_i(_tr_lower(n)) for n in _FISH_NAMES
-)
+_FISH_NAMES_FOLDED: frozenset[str] = frozenset(_fold_dotted_i(_tr_lower(n)) for n in _FISH_NAMES)
 
 
 def is_fish_name(name: str | None) -> bool:
@@ -560,7 +570,7 @@ def is_fish_name(name: str | None) -> bool:
         # Accept tokens that are a fish name + Turkish possessive suffix.
         for fn in _FISH_NAMES_FOLDED:
             if folded_tok != fn and folded_tok.startswith(fn):
-                suffix = folded_tok[len(fn):]
+                suffix = folded_tok[len(fn) :]
                 if suffix in _TR_POSSESSIVE_SUFFIXES:
                     return True
     lower = _tr_lower(cleaned)
@@ -698,7 +708,7 @@ def promote_category_words(
     if v == "Yerli":
         return name, None, category
     if v.startswith("Yerli "):
-        rest = v[len("Yerli "):].strip()
+        rest = v[len("Yerli ") :].strip()
         return name, rest or None, category
     return name, variety, category
 

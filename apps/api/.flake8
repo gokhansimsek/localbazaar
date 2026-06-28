@@ -31,5 +31,8 @@ exclude =
     dist,
     migrations,
 per-file-ignores =
-    tests/*: D
-    src/local_bazaar/__init__.py: D
+    # Patterns are leading-`*` anchored so they match both the standalone
+    # invocation (cwd=apps/api, paths like `tests/...`) and the pre-commit
+    # invocation (cwd=repo root, paths like `apps/api/tests/...`).
+    *tests/*: D
+    *src/local_bazaar/__init__.py: D

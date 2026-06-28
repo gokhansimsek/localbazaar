@@ -147,7 +147,9 @@ class AntalyaScraper:
             # the first <tr> in tbody — that's enough to confirm hydration
             # finished without depending on any specific row count.
             try:
-                await page.wait_for_selector(_ROW_SELECTOR, timeout=_PAGE_TIMEOUT_MS, state="attached")
+                await page.wait_for_selector(
+                    _ROW_SELECTOR, timeout=_PAGE_TIMEOUT_MS, state="attached"
+                )
             except Exception:
                 # No rows for this date (weekend / holiday) — return an empty result.
                 return
@@ -272,7 +274,7 @@ def _to_decimal(s: str) -> Decimal:
     """
     try:
         return Decimal(_normalize_number(s))
-    except (InvalidOperation, ValueError):
+    except InvalidOperation, ValueError:
         return Decimal(0)
 
 

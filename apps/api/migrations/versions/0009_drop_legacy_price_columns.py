@@ -46,9 +46,11 @@ def _table_exists(conn: sa.engine.Connection, table_name: str) -> bool:
 def upgrade() -> None:
     """Drop legacy columns and swap the uniqueness rule on every prices table."""
     conn = op.get_bind()
-    cities = conn.execute(
-        sa.text("SELECT slug FROM cities WHERE enabled = true ORDER BY slug")
-    ).scalars().all()
+    cities = (
+        conn.execute(sa.text("SELECT slug FROM cities WHERE enabled = true ORDER BY slug"))
+        .scalars()
+        .all()
+    )
 
     # Phase A — safety check: every existing row must have product_id set.
     for slug in cities:
@@ -117,9 +119,11 @@ def upgrade() -> None:
 def downgrade() -> None:
     """Re-add legacy columns. Data is NOT restored — re-scrape if you need it."""
     conn = op.get_bind()
-    cities = conn.execute(
-        sa.text("SELECT slug FROM cities WHERE enabled = true ORDER BY slug")
-    ).scalars().all()
+    cities = (
+        conn.execute(sa.text("SELECT slug FROM cities WHERE enabled = true ORDER BY slug"))
+        .scalars()
+        .all()
+    )
     for slug in cities:
         table_name = f"prices_{slug}"
         if not _table_exists(conn, table_name):

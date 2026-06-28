@@ -122,9 +122,9 @@ def upgrade() -> None:
     """Canonicalize units, drop broken rows, strip variety=unit, re-prune orphans."""
     conn = op.get_bind()
     cities: list[str] = list(
-        conn.execute(
-            sa.text("SELECT slug FROM cities WHERE enabled = true ORDER BY slug")
-        ).scalars().all()
+        conn.execute(sa.text("SELECT slug FROM cities WHERE enabled = true ORDER BY slug"))
+        .scalars()
+        .all()
     )
 
     # ---- Pass A: drop broken rows by structural signature ------------------

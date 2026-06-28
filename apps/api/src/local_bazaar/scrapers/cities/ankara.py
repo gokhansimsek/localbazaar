@@ -116,9 +116,7 @@ class AnkaraScraper:
         async with http_client() as client:
             csrf_token = await self._bootstrap(client)
             if csrf_token is None:
-                log.warning(
-                    "ankara.bel.tr: could not extract CSRF token — aborting run."
-                )
+                log.warning("ankara.bel.tr: could not extract CSRF token — aborting run.")
                 return 0
 
             for offset in range(self.lookback_days):
@@ -132,8 +130,7 @@ class AnkaraScraper:
                     consecutive_empty += 1
                     if consecutive_empty >= _MAX_CONSECUTIVE_EMPTY_DAYS:
                         log.info(
-                            "ankara.bel.tr: %d consecutive empty days, "
-                            "stopping backfill at %s.",
+                            "ankara.bel.tr: %d consecutive empty days, stopping backfill at %s.",
                             consecutive_empty,
                             target,
                         )
@@ -276,9 +273,7 @@ class AnkaraScraper:
             "X-CSRF-TOKEN": csrf_token,
         }
         try:
-            resp = await fetch_with_retry(
-                client, "POST", URL, data=data, headers=headers
-            )
+            resp = await fetch_with_retry(client, "POST", URL, data=data, headers=headers)
         except httpx.HTTPStatusError as exc:
             log.warning(
                 "ankara.bel.tr: POST date=%s type=%s failed: %s",
