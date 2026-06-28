@@ -5,7 +5,7 @@ A platform for Turkey's neighborhood bazaars. The first feature is **Wholesale M
 ## Features
 
 - **Wholesale Market Prices** — daily national bulletin plus 9 per-city scrapers (Adana, Ankara, Antalya, Bursa, Istanbul, Izmir, Kocaeli, Konya, Şanlıurfa). Scraped descriptors are normalized into a shared `products` registry (canonical category/unit; fish/seafood excluded). A `/trends` page offers a searchable product picker, a Hal (city) multiselect filter, daily/weekly/monthly granularity, and optional least-squares gap-fill; per-product detail pages add statistics cards across time windows (Today / Last week / Last month / Last 3 months / Last year / All).
-- **Bazaar Map** — neighborhood and producer markets for every province/district in Turkey, geocoded as pins on Google Maps. Includes a "Konumumu Kullan" geolocation helper that auto-fills both province and district from the browser's location, plus a suggestion form where visitors can propose a new market (drop a pin) or a correction to an existing one (queued for manual review).
+- **Bazaar Map** — neighborhood and producer markets for every province/district in Turkey, geocoded as pins on Google Maps. Includes a "Konumumu Kullan" geolocation helper that auto-fills both province and district from the browser's location, plus a suggestion form where visitors can propose a new market (drop a pin) or a correction to an existing one. Submissions are reviewed on a hidden, token-gated `/admin/suggestions` page where an operator approves them (auto-applied to the map) or rejects them.
 
 ## Architecture
 
@@ -27,6 +27,7 @@ Initial setup:
 Copy-Item .env.example .env
 # GOOGLE_MAPS_API_KEY (server) and NEXT_PUBLIC_GOOGLE_MAPS_API_KEY (browser) can be filled in.
 # If left empty, geocoding is skipped and the /markets page shows a placeholder.
+# ADMIN_TOKEN (optional) enables the hidden /admin/suggestions review page; leave empty to disable it.
 docker compose up --build
 ```
 
@@ -39,6 +40,7 @@ Services:
   - `/trends`     — Historical price series (product picker, Hal multiselect, granularity, gap-fill)
   - `/products/[name]` — Per-product detail page
   - `/markets`    — Google Maps view of pazar yerleri + suggestion form
+  - `/admin/suggestions` — hidden, token-gated review page (no nav link; needs `ADMIN_TOKEN`)
   - `/privacy`    — Privacy policy (AdSense requirement)
 
 The database is **not** containerized — set `DATABASE_URL` in `.env` to an external Postgres (AWS RDS or any reachable instance) before bringing up the stack.
@@ -110,14 +112,14 @@ uv run ruff check src tests
 uv run ruff format --check src tests
 uv run flake8 src tests
 uv run pyright src
-uv run pytest                      # ~69 tests; integration tests also run when TEST_DATABASE_URL is set
+uv run pytest                      # integration tests (prices/suggestions/admin) also run when TEST_DATABASE_URL is set
 
 # Frontend
 cd apps/web
 pnpm format:check
 pnpm lint
 pnpm typecheck
-pnpm test                          # ~42 tests across 8 suites
+pnpm test                          # ~44 tests across 8 suites
 ```
 
 One-time setup (after cloning):

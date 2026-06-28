@@ -47,6 +47,7 @@ Scaffolding is complete and gated by quality tools. The repo has:
   - `cities/antalya` — Playwright-driven scraper (the source is a Vue SPA)
 - A Linear-style homepage at `/` with three embedded animated UI previews (Markets, Prices, Trends). Sticky top header replaces the old left sidebar; the homepage cards act as primary navigation.
 - Google Maps geocoding (`geocoding.py`) and a map page (`/markets`) with a "Konumumu Kullan" button that reverse-geocodes the browser's coordinates into both province (`administrative_area_level_1`) and district (`administrative_area_level_2`), plus an in-page **suggestion form** for proposing new markets (drop a pin) or corrections to existing ones.
+- A **hidden, token-gated admin page** at `/admin/suggestions` (no nav link, `noindex` — reached by typing the URL) to review pending suggestions and **approve** (auto-applies: an `add` creates/reuses the `markets` row, resolving the pin's district via reverse geocoding; an `update` applies corrected coordinates) or **reject** them. Access is gated by a shared `ADMIN_TOKEN` sent in the `X-Admin-Token` header.
 - A `/trends` page with a searchable product picker, a Hal (city) multiselect filter, daily/weekly/monthly granularity, and optional server-side least-squares gap-fill on the chart.
 - Page-view analytics: a fire-and-forget `POST /api/page-views` from the client (`PageViewCounter`) increments per-path counters on an allow-list of routes.
 - Per-IP rate limiting on every `/api/*` route via **slowapi** (`API_RATE_LIMIT`, default `120/minute`), returning a clean JSON 429.
@@ -135,7 +136,7 @@ PostgreSQL 17. The schema has four concerns: the shared `products` registry, per
 ### Suggestions (crowdsourced markets)
 
 - `users (id, first_name, last_name, email UNIQUE, province_id FK, district_id FK, created_at)` — lightweight, password-less submitters deduped by email (the unique index is the `ON CONFLICT` target for the upsert).
-- `place_suggestions (id, user_id FK, suggestion_type, status, market_id FK, proposed_name, proposed_market_type, province_id FK, district_id FK, latitude, longitude, explanation, created_at, reviewed_at, review_note)` — one `add` or `update` request per row. `add` rows carry the proposed name/type + pinned coordinates; `update` rows reference an existing `markets` row. Rows are stored `status='pending'` and **never auto-applied** — an operator reviews them in the DB.
+- `place_suggestions (id, user_id FK, suggestion_type, status, market_id FK, proposed_name, proposed_market_type, province_id FK, district_id FK, latitude, longitude, explanation, created_at, reviewed_at, review_note)` — one `add` or `update` request per row. `add` rows carry the proposed name/type + pinned coordinates; `update` rows reference an existing `markets` row. Rows are stored `status='pending'`; nothing is auto-applied on submission. An operator reviews them via the hidden, token-gated `/admin/suggestions` page (which auto-applies on approve) or directly in the DB.
 
 ### Audit & engagement
 
@@ -159,7 +160,7 @@ The slug helper is `db.city_slug()` — Turkish-aware ASCII folding (`İstanbul 
 - **`/docs`, `/redoc`, `/openapi.json` are gated** by `ENABLE_API_DOCS`. Off by default; docker-compose sets it to `1` for dev, K8s leaves it unset so prod returns 404.
 - **Per-IP rate limiting** via `slowapi` (`SlowAPIMiddleware`) applies `API_RATE_LIMIT` (default `120/minute`) to every `/api/*` route; a custom handler returns a JSON 429 with `Retry-After`. `structlog` provides structured logging.
 
-### API surface (`/api` prefix, read-only except the two POSTs)
+### API surface (`/api` prefix, read-only except the suggestion/page-view POSTs and the token-gated admin endpoints)
 
 All endpoints are mounted under `/api`; `GET /healthz` (no prefix) is the K8s liveness probe.
 
@@ -167,6 +168,7 @@ All endpoints are mounted under `/api`; `GET /healthz` (no prefix) is the K8s li
 - **markets** — `GET /provinces`, `GET /provinces/{slug}/districts`, `GET /markets?province=&district=&type=&day=&geocoded=`.
 - **page-views** — `POST /page-views` (atomic increment, allow-list of paths), `GET /page-views` (leaderboard).
 - **suggestions** — `POST /suggestions` (upserts the user by email, stores a `pending` add/update suggestion; honeypot `website` field for spam).
+- **admin** (token-gated — `X-Admin-Token` must equal `ADMIN_TOKEN`; 503 when unset, 401 on mismatch) — `GET /admin/suggestions?status=`, `POST /admin/suggestions/{id}/approve` (auto-applies), `POST /admin/suggestions/{id}/reject`.
 
 Frontend types mirror these in `apps/web/src/lib/api.ts`; keep both in sync.
 
@@ -247,7 +249,7 @@ local_bazaar/
       src/local_bazaar/
         __init__.py
         main.py               # FastAPI app + lifespan; slowapi rate limit; mounts /api routers
-        config.py             # pydantic-settings (env-driven, incl. GOOGLE_MAPS_API_KEY, API_RATE_LIMIT)
+        config.py             # pydantic-settings (env-driven, incl. GOOGLE_MAPS_API_KEY, API_RATE_LIMIT, ADMIN_TOKEN)
         db.py                 # async engine, session, slug helper, per-city Table factory
         models.py             # SQLModel: City, Product, Province, District, Market, MarketType, ScrapeRun, PageView, User, PlaceSuggestion
         geocoding.py          # Google Maps Geocoding wrapper + batch geocode_pending_markets()
@@ -257,6 +259,7 @@ local_bazaar/
           markets.py          # GET /provinces, /provinces/{slug}/districts, /markets
           page_views.py       # POST + GET /page-views
           suggestions.py      # POST /suggestions (add/update a market; pending review)
+          admin.py            # token-gated suggestion review: list/approve/reject
         scheduler.py          # apscheduler wiring + run_daily_scrape()
         scrapers/
           __init__.py
@@ -286,6 +289,7 @@ local_bazaar/
         test_geocoding.py
         test_api_prices.py        # integration; needs TEST_DATABASE_URL
         test_api_suggestions.py   # integration; needs TEST_DATABASE_URL
+        test_api_admin.py         # integration; needs TEST_DATABASE_URL
     web/
       package.json
       pnpm-lock.yaml           # generated
@@ -309,6 +313,9 @@ local_bazaar/
           trends/page.tsx           # historical series: product picker + Hal multiselect + granularity
           products/[name]/page.tsx  # product detail: time-series chart + stats
           markets/page.tsx          # Google Maps view of pazar yerleri + Konumumu Kullan + suggestion form
+          admin/                    # hidden, token-gated suggestion review (noindex)
+            layout.tsx              # noindex metadata
+            suggestions/page.tsx    # token gate + approve/reject list
           privacy/                  # privacy policy (AdSense requirement)
           ads.txt/                  # ads.txt route for AdSense
         components/
@@ -458,9 +465,9 @@ kubectl -n local-bazaar exec deploy/api -- alembic upgrade head
 - **Scrapers**: one module per source under `scrapers/`. Each exposes `async run(session) -> int`. Add new sites without touching anything outside `scrapers/` + a `cities` row.
 - **Politeness**: respect robots.txt where the user has not explicitly opted out; set `SCRAPER_USER_AGENT`; small sleep between paginated requests; retry only on network/timeout errors (`tenacity` in `scrapers/base.py`).
 - **Scheduler errors**: per-scrape errors must never crash the scheduler. `scheduler._safe_scrape()` records every attempt in `scrape_runs` with status `ok|partial|failed`.
-- **API**: no auth. Mostly read-only; the only writes are `POST /api/page-views` (counter) and `POST /api/suggestions` (queued for review, honeypot-guarded). Every route is per-IP rate-limited by slowapi. CORS origins are env-driven (`API_CORS_ORIGINS`) but are no longer load-bearing for security — the API is not exposed to the public internet (see Architecture). When adding endpoints that query per-city tables, guard against `prices_<slug>` not yet existing: use `to_regclass(:name)` or the `_existing_slugs(session, slugs)` helper in `api/prices.py`.
+- **API**: public reads need no auth. Mostly read-only; the unauthenticated writes are `POST /api/page-views` (counter) and `POST /api/suggestions` (queued for review, honeypot-guarded). The `/api/admin/*` review endpoints are the one privileged surface, gated by a shared `ADMIN_TOKEN` in the `X-Admin-Token` header (compared constant-time; 503 when unset). Every route is per-IP rate-limited by slowapi. CORS origins are env-driven (`API_CORS_ORIGINS`) but are no longer load-bearing for security — the API is not exposed to the public internet (see Architecture). When adding endpoints that query per-city tables, guard against `prices_<slug>` not yet existing: use `to_regclass(:name)` or the `_existing_slugs(session, slugs)` helper in `api/prices.py`.
 - **Frontend types**: hand-maintained in `src/lib/api.ts`. When changing API shapes, update both files in the same PR. Codegen via `openapi-typescript` can be added later — there is intentionally none today.
-- **Secrets**: only in `.env` locally and AWS Secrets Manager in cluster. `deploy/k8s/base/secrets.example.yaml` shows the expected shape — never commit real values. The Google Maps key is split into two env vars: server-side `GOOGLE_MAPS_API_KEY` (used by `geocoding.py`) and browser-side `NEXT_PUBLIC_GOOGLE_MAPS_API_KEY` (used by the map widget). Restrict each in the Google Cloud Console (IP for server, HTTP referrer for browser).
+- **Secrets**: only in `.env` locally and AWS Secrets Manager in cluster. `deploy/k8s/base/secrets.example.yaml` shows the expected shape — never commit real values. The Google Maps key is split into two env vars: server-side `GOOGLE_MAPS_API_KEY` (used by `geocoding.py`) and browser-side `NEXT_PUBLIC_GOOGLE_MAPS_API_KEY` (used by the map widget). Restrict each in the Google Cloud Console (IP for server, HTTP referrer for browser). `ADMIN_TOKEN` is the shared secret for the `/admin/suggestions` page — empty disables the admin API; set a long random value locally and in cluster secrets.
 
 ## Platform notes
 
@@ -474,13 +481,13 @@ kubectl -n local-bazaar exec deploy/api -- alembic upgrade head
 1. **Provision Google Maps** if not already done: enable Maps JavaScript API + Geocoding API in GCP, generate two keys (server / browser), put them in `.env` as `GOOGLE_MAPS_API_KEY` and `NEXT_PUBLIC_GOOGLE_MAPS_API_KEY`. Without these, market lat/lng will stay null and the `/markets` page shows a "set the key" placeholder.
 2. **Backfills** are idempotent — re-running a city scraper is cheap because each one skips dates already in `prices_<slug>`. Use the per-module CLI commands listed above to seed history (160 days by default).
 3. **Add a per-city price scraper**: write `apps/api/src/local_bazaar/scrapers/cities/<slug>.py` mirroring an existing one, then add a new Alembic migration that inserts the row into `cities` (see `0004_seed_city_scrapers.py`). The scheduler auto-discovers it.
-4. **Review place suggestions**: `place_suggestions` rows land `status='pending'`; there is no admin UI yet — query/triage them in the DB and apply approved ones to `markets` by hand (a moderation endpoint/console is a natural next build).
+4. **Review place suggestions**: visit the hidden `/admin/suggestions` page (gated by `ADMIN_TOKEN`, no nav link) to approve (auto-applies to `markets`) or reject pending rows; or query `place_suggestions` directly in the DB. Set `ADMIN_TOKEN` in `.env` (and cluster secrets) to enable the page.
 5. **CI/CD**: GitHub Actions workflows under `.github/workflows/` (lint, test, build images, push to ECR, `kubectl apply -k overlays/<env>`) — not yet scaffolded.
 6. **Terraform skeleton** under `deploy/terraform/` (EKS, RDS, ECR, VPC, IAM, External Secrets) — not yet scaffolded.
 
 ## Out of scope (today)
 
-- Auth, multi-tenancy, billing. App exposes read-only price data.
+- User accounts, multi-tenancy, billing. Public reads need no auth; the only privileged surface is the shared-token `/admin/suggestions` review page (no per-user login).
 - Real-time / intraday updates. Daily snapshots only.
 - Forecasting / ML on top of the price series.
 - Mobile-native clients. Web (responsive) is the only frontend.
