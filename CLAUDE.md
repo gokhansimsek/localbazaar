@@ -104,8 +104,9 @@ Prices are min/max ranges on most sources; we store the midpoint as `average_pri
 ### Update cadence
 
 - Daily scrape at 02:00 Europe/Istanbul.
-- In-cluster, the CronJob `scrape-daily` is the canonical trigger (the in-process apscheduler is disabled via `SCRAPER_DISABLE_SCHEDULER=1`).
-- Locally / in `docker compose`, the in-process scheduler runs.
+- Locally / in `docker compose`, the in-process apscheduler runs `run_daily_scrape()` — national bulletin + **all** per-city scrapers + the markets crawl (geocoding excluded).
+- In-cluster, the in-process scheduler is disabled (`SCRAPER_DISABLE_SCHEDULER=1`) and the CronJob `scrape-daily` is the canonical trigger. It runs `python -m local_bazaar.scheduler`, whose `_main()` calls `run_daily_scrape()` once and exits — so it covers the same work as the in-process scheduler (national bulletin + all per-city scrapers + markets crawl; geocoding excluded). The Job allows 2 h and 1Gi (the markets crawl + Antalya's headless Chromium need the headroom).
+- See **Running the scrapers** in `README.md` for the full local + cloud runbook.
 
 ## Database schema
 

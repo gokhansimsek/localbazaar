@@ -1,6 +1,11 @@
 # Daily scrape, runs at 02:00 Europe/Istanbul (= 23:00 UTC previous day).
 # In-cluster scheduler is disabled (SCRAPER_DISABLE_SCHEDULER=1 on api Deployment),
 # so this CronJob is the canonical daily trigger.
+#
+# `python -m local_bazaar.scheduler` runs run_daily_scrape() once and exits:
+# national bulletin + every per-city scraper + the markets crawl. Geocoding is
+# NOT triggered here (it spends Google Maps quota) — run scripts/geocode_markets.py
+# on demand instead.
 apiVersion: batch/v1
 kind: CronJob
 metadata:
@@ -17,7 +22,9 @@ spec:
   jobTemplate:
     spec:
       backoffLimit: 2
-      activeDeadlineSeconds: 3600
+      # Full scrape = national + 9 city scrapers + markets crawl (~30–60 min on its own).
+      # 2 h leaves headroom; a cold first run that backfills a year may need more.
+      activeDeadlineSeconds: 7200
       template:
         spec:
           restartPolicy: OnFailure
@@ -27,7 +34,7 @@ spec:
               command:
                 - python
                 - -m
-                - local_bazaar.scrapers.hal_gov_tr
+                - local_bazaar.scheduler
               env:
                 - name: DATABASE_URL
                   valueFrom:
@@ -40,4 +47,6 @@ spec:
                   memory: 256Mi
                 limits:
                   cpu: 500m
-                  memory: 512Mi
+                  # The Antalya scraper drives headless Chromium (Playwright),
+                  # which alone can use 300–500Mi — 512Mi risks an OOMKill.
+                  memory: 1Gi

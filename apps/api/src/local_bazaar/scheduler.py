@@ -7,6 +7,7 @@ FastAPI being up).
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from collections.abc import Awaitable, Callable
 from datetime import UTC, date, datetime
@@ -151,3 +152,23 @@ __all__ = [
     "stop_scheduler",
     "today_istanbul",
 ]
+
+
+async def _main() -> None:
+    """Run the full daily scrape once and exit.
+
+    This is the entrypoint the Kubernetes ``scrape-daily`` CronJob invokes
+    (``python -m local_bazaar.scheduler``). It runs the same work the
+    in-process scheduler would — national bulletin, every per-city scraper,
+    and the markets crawl — without starting apscheduler, so the process
+    exits when the scrape finishes. Geocoding is intentionally excluded
+    (run ``scripts/geocode_markets.py`` separately).
+    """
+    logging.basicConfig(
+        level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s"
+    )
+    await run_daily_scrape()
+
+
+if __name__ == "__main__":
+    asyncio.run(_main())

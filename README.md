@@ -99,6 +99,162 @@ kubectl -n local-bazaar rollout status deploy/api deploy/web
 # Web → http://localhost:8080
 ```
 
+## Running the scrapers
+
+There are **eleven** scrapers, all living inside the API package under
+`apps/api/src/local_bazaar/scrapers/`. Every concrete scraper exposes
+`async run(session) -> int` (returns the number of rows written) and can be
+driven three ways: as a one-off CLI module (`python -m …`), by the in-process
+`apscheduler` (local/dev only), or by the Kubernetes `scrape-daily` CronJob.
+
+| Scraper module | What it does | Writes to | Default lookback | Typical runtime |
+|----------------|--------------|-----------|------------------|-----------------|
+| `scrapers.hal_gov_tr` | National `hal.gov.tr` bulletin | `prices_national` | 360 days | ~1 h cold, seconds warm |
+| `scrapers.cities.<slug>` | Per-city hal prices (9 cities) | `prices_<slug>` | 160 days | minutes; cheap warm |
+| `scrapers.bazaar_locations` | Markets crawl (81 il × ilçe × type) | `provinces`/`districts`/`markets` | n/a (full crawl) | ~30–60 min |
+| `scripts/geocode_markets.py` | Fills `latitude`/`longitude` (Google API) | `markets` | n/a (opt-in) | depends on `--max` |
+
+City slugs: `adana`, `ankara`, `antalya`, `bursa`, `istanbul`, `izmir`,
+`kocaeli`, `konya`, `sanliurfa`.
+
+**Idempotency** — every scrape is safe to re-run. The price scrapers skip any
+`bulletin_date` already present in their `prices_<slug>` table, so repeat runs
+only fetch missing days. The markets crawl UPSERTs on
+`(district_id, market_type, name)`. Geocoding only touches rows whose
+coordinates are still `NULL`.
+
+**Geocoding is never automatic.** It is excluded from both the scheduler and the
+CronJob because it spends Google Maps API quota. Run `scripts/geocode_markets.py`
+by hand after a markets crawl (see below).
+
+### Scraper-related environment variables
+
+| Variable | Default | Effect |
+|----------|---------|--------|
+| `DATABASE_URL` | — (required) | Async Postgres DSN the scrapers write to. |
+| `SCRAPER_USER_AGENT` | `local_bazaar/0.1` | `User-Agent` sent on every scrape request. |
+| `SCRAPER_DAILY_HOUR` | `2` | Hour (Europe/Istanbul) the in-process scheduler fires. |
+| `SCRAPER_DISABLE_SCHEDULER` | `false` | Set to `1`/`true` to suppress the in-process scheduler (set in-cluster, where the CronJob owns scheduling). |
+| `GOOGLE_MAPS_API_KEY` | — | Server-side key used only by `scripts/geocode_markets.py` (not by the scrapers themselves). |
+
+The lookback windows are constructor arguments inside each scraper module
+(`_DEFAULT_LOOKBACK_DAYS`), not environment variables — to backfill a longer
+window, edit the default or instantiate the scraper class directly in a REPL.
+
+### Running locally
+
+**Option A — standalone (`uv`), fastest feedback loop.** Run from `apps/api`
+with `DATABASE_URL` set in your environment (or an `apps/api/.env`):
+
+```powershell
+cd apps/api
+uv sync --extra dev
+uv run alembic upgrade head        # schema must exist before the first scrape
+
+# National bulletin (synthetic 'national' slug). First run backfills ~360 days (~1 h);
+# subsequent runs only fetch the 1–2 missing days, so they finish in seconds.
+uv run python -m local_bazaar.scrapers.hal_gov_tr
+
+# Per-city price scrapers (default lookback 160 days; skip dates already stored).
+uv run python -m local_bazaar.scrapers.cities.istanbul
+uv run python -m local_bazaar.scrapers.cities.ankara
+uv run python -m local_bazaar.scrapers.cities.izmir
+uv run python -m local_bazaar.scrapers.cities.bursa
+uv run python -m local_bazaar.scrapers.cities.konya
+uv run python -m local_bazaar.scrapers.cities.adana
+uv run python -m local_bazaar.scrapers.cities.kocaeli
+uv run python -m local_bazaar.scrapers.cities.sanliurfa
+
+# Antalya needs Playwright + Chromium (the source is a Vue SPA):
+uv sync --extra playwright
+playwright install chromium
+uv run python -m local_bazaar.scrapers.cities.antalya
+
+# Markets crawl (long; no Google calls). Then geocode opt-in.
+uv run python -m local_bazaar.scrapers.bazaar_locations
+uv run python scripts/geocode_markets.py --max=200
+```
+
+**Option B — through Docker Compose** (scrapers run inside the already-built API
+container, same image as production):
+
+```powershell
+docker compose up --build
+docker compose exec api alembic upgrade head
+docker compose exec api python -m local_bazaar.scrapers.hal_gov_tr
+docker compose exec api python -m local_bazaar.scrapers.cities.istanbul
+# …same module names as Option A; Playwright/Chromium are already baked into the image.
+docker compose exec api python -m local_bazaar.scrapers.bazaar_locations
+docker compose exec api python scripts/geocode_markets.py --max=200
+```
+
+**Option C — let the in-process scheduler do it.** Whenever the API runs locally
+(standalone `uvicorn` or `docker compose`) and `SCRAPER_DISABLE_SCHEDULER` is not
+set, an `apscheduler` job fires `run_daily_scrape()` at `SCRAPER_DAILY_HOUR:00`
+Europe/Istanbul (default 02:00). That single job runs the national scraper, **all**
+enabled per-city scrapers (auto-discovered from the `cities` table), and the
+markets crawl — but **not** geocoding. Every attempt is recorded in `scrape_runs`
+with status `ok` / `partial` / `failed`; one source failing never aborts the rest.
+
+### Running on the cloud (Kubernetes / EKS)
+
+In-cluster, the in-process scheduler is **disabled** (`SCRAPER_DISABLE_SCHEDULER=1`
+on the api Deployment) so the API pods never scrape. Scheduling is owned by a
+dedicated `CronJob` (`deploy/k8s/base/scrape-cronjob.yaml`) that runs the same
+API image with an overridden command:
+
+```yaml
+schedule: "0 23 * * *"     # 02:00 Europe/Istanbul = 23:00 UTC
+concurrencyPolicy: Forbid   # never overlap runs
+backoffLimit: 2
+activeDeadlineSeconds: 7200
+command: ["python", "-m", "local_bazaar.scheduler"]
+```
+
+`python -m local_bazaar.scheduler` runs `run_daily_scrape()` once and exits, so
+the CronJob covers the **same** work as the in-process scheduler: national
+bulletin + all 9 per-city scrapers + the markets crawl. Geocoding is still
+excluded (run `scripts/geocode_markets.py` on demand). Because the full run
+includes the ~30–60 min markets crawl and the Antalya Playwright/Chromium scrape,
+the Job allows 2 h (`activeDeadlineSeconds: 7200`) and a 1Gi memory limit.
+
+**Manual / ad-hoc cluster runs** — exec into a running API pod (the scheduler is
+off, so this is the way to trigger a scrape on demand):
+
+```powershell
+# Replace the namespace with your overlay's (local-bazaar-dev / -prod, or local-bazaar).
+kubectl -n local-bazaar-dev exec deploy/api -- python -m local_bazaar.scrapers.cities.istanbul
+kubectl -n local-bazaar-dev exec deploy/api -- python -m local_bazaar.scrapers.bazaar_locations
+kubectl -n local-bazaar-dev exec deploy/api -- python scripts/geocode_markets.py --max=500
+```
+
+**Trigger the daily CronJob immediately** (creates an out-of-schedule Job from the
+CronJob template, then watch it):
+
+```powershell
+kubectl -n local-bazaar-dev create job --from=cronjob/scrape-daily scrape-manual-001
+kubectl -n local-bazaar-dev get jobs -w
+kubectl -n local-bazaar-dev logs job/scrape-manual-001 -f
+```
+
+**Inspect history** — every CronJob run (and every scrape, however triggered) is
+auditable:
+
+```powershell
+# Last few CronJob pods + their logs
+kubectl -n local-bazaar-dev get pods -l job-name --sort-by=.metadata.creationTimestamp
+kubectl -n local-bazaar-dev logs <scrape-pod-name>
+
+# Structured audit trail in Postgres (status ok/partial/failed, rows_written, error)
+docker compose exec api psql "$DATABASE_URL" -c \
+  "SELECT scraper, city_slug, status, rows_written, finished_at FROM scrape_runs ORDER BY started_at DESC LIMIT 20;"
+```
+
+The CronJob image must be present in your registry (ECR) and referenced by the
+overlay; building/pushing it is covered under **Deploy** in `CLAUDE.md`. The image
+ships Playwright + Chromium so the Antalya scraper works the same in-cluster as
+locally.
+
 ## Quality gates
 
 Both backend and frontend go through pre-commit hooks. Backend: **ruff** (lint + format), **flake8** (bugbear + comprehensions + docstrings), **pyright**, **pytest**. Frontend: **prettier**, **eslint** (Next.js 16 flat config), **tsc**, **vitest**. See `.pre-commit-config.yaml` for details.
