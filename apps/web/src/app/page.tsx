@@ -18,7 +18,7 @@ export default function HomePage() {
           </h1>
           <p className="mx-auto mt-7 max-w-xl text-[15px] leading-[1.65] text-ink-soft">
             81 il, binlerce mahalle pazarı ve ürünlerin günlük fiyatları. Haritada keşfedin,
-            fiyatları izleyin, trendleri okuyun.
+            fiyatları izleyin, fiyat geçmişini okuyun.
           </p>
           <div className="mt-9 flex flex-wrap items-center justify-center gap-3">
             <Link href="/markets" className="btn-primary">

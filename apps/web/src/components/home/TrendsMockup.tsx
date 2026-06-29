@@ -7,7 +7,7 @@ export function TrendsMockup() {
     <div className="relative aspect-[5/4] w-full overflow-hidden rounded-2xl border border-surface-border bg-white shadow-soft">
       <div className="flex items-center justify-between border-b border-surface-border px-4 py-2.5">
         <div className="text-[10.5px] font-medium uppercase tracking-[0.16em] text-ink-muted">
-          Trend
+          Fiyat Geçmişi
         </div>
         <div className="flex gap-1 font-mono text-[10px]">
           {["1H", "1A", "3A", "6A", "1Y"].map((label, i) => (
