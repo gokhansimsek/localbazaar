@@ -8,7 +8,7 @@ import { cn } from "@/lib/cn";
 const NAV: { href: Route; label: string }[] = [
   { href: "/markets", label: "Pazarlar" },
   { href: "/prices", label: "Hal Fiyatları" },
-  { href: "/trends", label: "Trendler" },
+  { href: "/trends", label: "Fiyat Geçmişi" },
 ];
 
 export function SiteHeader() {

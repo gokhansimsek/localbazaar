@@ -52,11 +52,11 @@ export default function HomePage() {
       />
 
       <FeatureSection
-        eyebrow="Trendler"
+        eyebrow="Fiyat Geçmişi"
         title="Tarihsel seri"
         copy="Günlük, haftalık veya aylık birikim. Ürün bazlı çizgi grafikleri, yüzde değişim okumaları ve mevsimsellik kalıpları."
         href="/trends"
-        cta="Trendleri incele"
+        cta="Fiyat Geçmişini incele"
         mockup={<TrendsMockup />}
       />
     </div>
