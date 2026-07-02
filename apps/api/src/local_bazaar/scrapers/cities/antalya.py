@@ -29,6 +29,7 @@ The project Dockerfile already wires both steps for cluster runs.
 from __future__ import annotations
 
 import asyncio
+import importlib
 import logging
 from collections.abc import AsyncIterator
 from datetime import date, datetime, timedelta
@@ -90,9 +91,7 @@ class AntalyaScraper:
         # demand for each city scrape; missing Playwright surfaces as an
         # ImportError logged below rather than crashing the scheduler.
         try:
-            from playwright.async_api import (
-                async_playwright,  # pyright: ignore[reportMissingImports]
-            )
+            async_playwright = importlib.import_module("playwright.async_api").async_playwright
         except ImportError as exc:
             log.warning(
                 "antalya: playwright is not installed (%s) — skipping. "

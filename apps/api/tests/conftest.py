@@ -10,6 +10,7 @@ from __future__ import annotations
 import asyncio
 import os
 import sys
+import warnings
 from collections.abc import AsyncIterator
 
 import pytest
@@ -35,20 +36,26 @@ requires_db = pytest.mark.skipif(
 )
 
 
-@pytest.fixture(scope="session")
-def event_loop_policy() -> asyncio.AbstractEventLoopPolicy:
-    """Event-loop policy for async tests.
+def pytest_configure(config: pytest.Config) -> None:
+    """Use a selector event loop on Windows so psycopg async tests can run.
 
-    On Windows, psycopg's async mode is incompatible with the default
-    ``ProactorEventLoop``, so use a selector-based policy (mirrors the fix in
-    ``migrations/env.py``). Other platforms keep the default policy.
+    Psycopg's async driver is incompatible with the default ``ProactorEventLoop``
+    on Windows. Alembic applies the same workaround in ``migrations/env.py`` via
+    ``asyncio.run(..., loop_factory=...)``; pytest-asyncio 1.x still routes tests
+    through the (deprecated) policy API, so we install ``WindowsSelectorEventLoopPolicy``
+    before the session starts.
 
-    Returns:
-        The event-loop policy pytest-asyncio should use for the session.
+    Args:
+        config: Pytest configuration object (unused; required by hook signature).
     """
-    if sys.platform == "win32":
-        return asyncio.WindowsSelectorEventLoopPolicy()
-    return asyncio.DefaultEventLoopPolicy()
+    _ = config
+    if sys.platform != "win32":
+        return
+
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", DeprecationWarning)
+        policy = asyncio.WindowsSelectorEventLoopPolicy()  # pyright: ignore[reportAttributeAccessIssue]
+        asyncio.set_event_loop_policy(policy)  # pyright: ignore[reportAttributeAccessIssue]
 
 
 @pytest_asyncio.fixture
