@@ -4,7 +4,7 @@ version = "0.1.0"
 description = "Semt Pazarı — Turkey neighborhood-markets and wholesale-prices platform (FastAPI backend)"
 requires-python = ">=3.14"
 license = { text = "Proprietary" }
-authors = [{ name = "Gokhan Simsek", email = "gokhan.simsek@osf.digital" }]
+authors = [{ name = "Gokhan Simsek", email = "gokhan_simsek@windowslive.com" }]
 
 dependencies = [
     "fastapi[standard]>=0.115",

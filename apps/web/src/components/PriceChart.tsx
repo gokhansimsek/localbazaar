@@ -33,17 +33,19 @@ type Props = {
 /** One distinct chart line: a (city × category × variety) combination. */
 export type Series = { key: string; label: string };
 
+// Distinct enough to tell ten lines apart, but drawn from the same crate /
+// produce / tarp colors as the rest of the UI.
 const SERIES_COLORS = [
-  "#635BFF", // indigo (brand)
-  "#00D4FF", // sky
-  "#FF7AB6", // pink
-  "#A78BFA", // violet
-  "#0FB67A", // success green
-  "#F59E0B", // amber
-  "#3DDC97", // mint
-  "#EF4444", // red
-  "#06B6D4", // cyan
-  "#F97316", // orange
+  "#C4432B", // crate red
+  "#3E6A7A", // tarp blue
+  "#7A8C4A", // leaf green
+  "#B3822A", // ochre
+  "#6B3A5B", // eggplant
+  "#1F2A1C", // ink
+  "#4F8A8B", // sea teal
+  "#E0A93C", // lemon
+  "#8A5A3B", // walnut
+  "#8C9284", // stone
 ];
 
 type DotProps = {
@@ -175,33 +177,33 @@ export function PriceChart({ points, cityNames, visibleKeys }: Props) {
       <div className="h-80 w-full">
         <ResponsiveContainer width="100%" height="100%">
           <LineChart data={rows} margin={{ top: 8, right: 16, left: 0, bottom: 8 }}>
-            <CartesianGrid stroke="#E3E8EF" vertical={false} />
+            <CartesianGrid stroke="#DCD3BE" vertical={false} />
             <XAxis
               dataKey="bulletin_date"
               tickFormatter={(v: string) => formatDate(v)}
-              tick={{ fill: "#697386", fontSize: 12 }}
+              tick={{ fill: "#6B7263", fontSize: 12 }}
               tickMargin={8}
-              stroke="#E3E8EF"
+              stroke="#DCD3BE"
             />
             <YAxis
-              tick={{ fill: "#697386", fontSize: 12 }}
+              tick={{ fill: "#6B7263", fontSize: 12 }}
               tickFormatter={(v: number) => `${v.toLocaleString("tr-TR")} ₺`}
-              stroke="#E3E8EF"
+              stroke="#DCD3BE"
               width={70}
             />
             <Tooltip
               labelFormatter={(label: string) => formatDate(label)}
               formatter={(value: number, name: string) => [formatPrice(value), name]}
               contentStyle={{
-                borderRadius: 12,
-                border: "1px solid #E3E8EF",
-                boxShadow: "0 4px 24px -8px rgba(50, 50, 93, 0.12)",
+                borderRadius: 6,
+                border: "1px solid #DCD3BE",
+                boxShadow: "0 2px 8px rgba(31, 42, 28, 0.08)",
                 fontSize: 13,
               }}
             />
             <Legend
               iconType="circle"
-              wrapperStyle={{ fontSize: 12, paddingTop: 8, color: "#425466" }}
+              wrapperStyle={{ fontSize: 12, paddingTop: 8, color: "#3F4A39" }}
             />
             {series.map((s, i) => {
               // Keep color keyed to the full series index so a series keeps its

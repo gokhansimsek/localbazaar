@@ -32,15 +32,25 @@ export default function ProductPage({ params }: { params: Promise<Params> }) {
   }, []);
 
   useEffect(() => {
+    let cancelled = false;
     setLoading(true);
     setError(null);
     productHistory(name, {
       city: activeCity,
       from: rangeToFromDate(range),
     })
-      .then(setPoints)
-      .catch((e) => setError(String(e)))
-      .finally(() => setLoading(false));
+      .then((p) => {
+        if (!cancelled) setPoints(p);
+      })
+      .catch((e) => {
+        if (!cancelled) setError(String(e));
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
   }, [name, activeCity, range]);
 
   const selectableCities = useMemo(
@@ -59,21 +69,20 @@ export default function ProductPage({ params }: { params: Promise<Params> }) {
     <div className="space-y-8">
       <Link
         href="/prices"
-        className="inline-flex items-center gap-1.5 text-sm text-ink-muted transition-colors hover:text-indigo-700"
+        className="inline-flex items-center gap-1.5 text-sm text-ink-muted transition-colors hover:text-crate-700"
       >
         <ArrowLeft size={14} />
         Bültene dön
       </Link>
 
       <header className="space-y-2">
-        <span className="chip">Ürün detayı</span>
-        <h1 className="text-3xl font-semibold tracking-tight lg:text-4xl">{name}</h1>
+        <h1 className="text-3xl font-semibold lg:text-5xl">{name}</h1>
         <p className="text-ink-soft">Seçili şehir için tarihsel ortalama fiyat (₺).</p>
       </header>
 
       {stats && (
         <section className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-          <Stat label="Son fiyat" value={formatPrice(stats.latest)} />
+          <Stat label="Son fiyat" value={formatPrice(stats.latest)} tag />
           <Stat label="Önceki periyot" value={formatPrice(stats.first)} delta={stats.deltaPct} />
           <Stat label="Ortalama" value={formatPrice(stats.avg)} />
         </section>
@@ -105,11 +114,27 @@ export default function ProductPage({ params }: { params: Promise<Params> }) {
   );
 }
 
-function Stat({ label, value, delta }: { label: string; value: string; delta?: number }) {
+function Stat({
+  label,
+  value,
+  delta,
+  tag = false,
+}: {
+  label: string;
+  value: string;
+  delta?: number;
+  tag?: boolean;
+}) {
   return (
     <div className="card p-5">
-      <div className="text-xs uppercase tracking-wide text-ink-muted">{label}</div>
-      <div className="mt-1 text-2xl font-semibold tabular-nums">{value}</div>
+      <div className="text-xs font-medium text-ink-muted">{label}</div>
+      <div className="mt-2">
+        {tag ? (
+          <span className="price-tag text-2xl">{value}</span>
+        ) : (
+          <span className="font-display text-2xl font-semibold tabular-nums">{value}</span>
+        )}
+      </div>
       {delta !== undefined && Number.isFinite(delta) && (
         <div
           className={cn(

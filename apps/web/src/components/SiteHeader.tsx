@@ -14,29 +14,33 @@ const NAV: { href: Route; label: string }[] = [
 export function SiteHeader() {
   const pathname = usePathname();
   return (
-    <header className="sticky top-0 z-40 border-b border-surface-border/70 bg-white/75 backdrop-blur-xl">
-      <div className="mx-auto flex h-14 max-w-7xl items-center justify-between px-6 lg:px-12">
-        <Link href="/" className="group flex items-center gap-2.5">
-          <span className="relative grid h-6 w-6 place-items-center overflow-hidden rounded-[7px] bg-ink">
-            <span className="absolute inset-0 bg-[linear-gradient(135deg,#635BFF_0%,transparent_60%)] opacity-80" />
-            <span className="relative block h-1.5 w-1.5 rounded-[1.5px] bg-white" />
+    <header className="sticky top-0 z-40 border-b border-surface-border bg-surface-subtle/95 backdrop-blur">
+      <div className="mx-auto flex h-14 max-w-7xl items-center justify-between gap-4 px-4 sm:px-6 lg:px-12">
+        <Link
+          href="/"
+          aria-label="Semt Pazarı ana sayfa"
+          className="flex shrink-0 items-center gap-2.5"
+        >
+          <span aria-hidden className="grid h-6 w-6 place-items-center rounded-[4px] bg-crate-500">
+            <span className="block h-1.5 w-1.5 rounded-full bg-surface-subtle" />
           </span>
-          <span className="text-[14.5px] font-semibold tracking-[-0.01em] text-ink">
-            Semt Pazarı
-          </span>
+          <span className="font-display text-[17px] font-semibold text-ink">Semt Pazarı</span>
         </Link>
 
-        <nav className="hidden items-center gap-0.5 md:flex">
+        {/* Phones navigate with MobileTabBar instead. */}
+        <nav className="hidden items-center gap-1 sm:flex">
           {NAV.map((item) => {
-            const active =
-              pathname === item.href || (item.href !== "/" && pathname.startsWith(`${item.href}/`));
+            const active = pathname === item.href || pathname.startsWith(`${item.href}/`);
             return (
               <Link
                 key={item.href}
                 href={item.href}
+                aria-current={active ? "page" : undefined}
                 className={cn(
-                  "rounded-md px-3 py-1.5 text-[13px] font-medium transition-colors",
-                  active ? "text-ink" : "text-ink-muted hover:text-ink",
+                  "px-2 py-1.5 text-[13px] font-medium underline-offset-[6px] transition-colors sm:px-3 sm:text-[14px]",
+                  active
+                    ? "text-ink underline decoration-crate-500 decoration-2"
+                    : "text-ink-muted hover:text-ink",
                 )}
               >
                 {item.label}
@@ -44,8 +48,6 @@ export function SiteHeader() {
             );
           })}
         </nav>
-
-        <div className="hidden md:block" />
       </div>
     </header>
   );

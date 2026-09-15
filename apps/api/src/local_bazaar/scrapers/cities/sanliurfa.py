@@ -42,6 +42,7 @@ from local_bazaar.scrapers.base import (
     ProductPrice,
     fetch_with_retry,
     http_client,
+    is_allowed,
     upsert_prices,
 )
 
@@ -84,8 +85,12 @@ class SanliurfaScraper:
             session: An open async DB session.
 
         Returns:
-            Total rows written across newly-scraped days.
+            Total rows written across newly-scraped days. ``0`` is also
+            returned when ``robots.txt`` disallows this run entirely.
         """
+        if not await is_allowed(_URL):
+            log.warning("sanliurfa: robots.txt disallows %s — skipping this run.", _URL)
+            return 0
         today = _today_istanbul()
         total = 0
         async with http_client() as client:

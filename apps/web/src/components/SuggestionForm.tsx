@@ -63,9 +63,17 @@ export function SuggestionForm({
       setUserDistrict("");
       return;
     }
+    let cancelled = false;
     listDistricts(userProvince)
-      .then(setUserDistricts)
-      .catch(() => setUserDistricts([]));
+      .then((d) => {
+        if (!cancelled) setUserDistricts(d);
+      })
+      .catch(() => {
+        if (!cancelled) setUserDistricts([]);
+      });
+    return () => {
+      cancelled = true;
+    };
   }, [userProvince]);
 
   function validate(): string | null {
@@ -161,7 +169,7 @@ export function SuggestionForm({
                 className={cn(
                   "rounded-lg px-3 py-1.5 text-xs font-medium transition-all",
                   mode === m
-                    ? "bg-indigo-500 text-white shadow-soft"
+                    ? "bg-ink text-surface-subtle"
                     : "text-ink-soft hover:bg-surface-muted",
                 )}
               >
@@ -326,7 +334,7 @@ export function SuggestionForm({
 }
 
 const inputCls =
-  "w-full rounded-xl border border-surface-border bg-white px-3 py-2 text-sm text-ink outline-none transition-all focus:border-indigo-400 focus:shadow-ring";
+  "w-full rounded-xl border border-surface-border bg-white px-3 py-2 text-sm text-ink outline-none transition-all focus:border-crate-400 focus:shadow-ring";
 
 function Field({
   label,

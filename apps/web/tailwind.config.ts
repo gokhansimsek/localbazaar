@@ -1,8 +1,11 @@
 import type { Config } from "tailwindcss";
 
 /**
- * Stripe-inspired palette. Brand indigo (#635BFF), off-white surfaces (#F6F9FC),
- * gradient accents toward sky / pink for hover and highlight states.
+ * Semt Pazarı token set — grounded in the actual subject (produce crates,
+ * chalk price boards, official hal bulletins) rather than a generic SaaS
+ * palette. Kraft-paper surfaces, crate-red as the primary accent, leaf-green
+ * and price-tag ochre as secondaries. Flat panels + thin rules instead of
+ * soft drop shadows; radii stay small (this is a price ledger, not a card kit).
  */
 const config: Config = {
   content: ["./src/app/**/*.{ts,tsx}", "./src/components/**/*.{ts,tsx}"],
@@ -14,56 +17,73 @@ const config: Config = {
     },
     extend: {
       fontFamily: {
-        sans: ["var(--font-inter)", "system-ui", "sans-serif"],
-        display: ["var(--font-inter)", "system-ui", "sans-serif"],
+        sans: ["var(--font-body)", "system-ui", "sans-serif"],
+        display: ["var(--font-display)", "system-ui", "sans-serif"],
       },
       colors: {
-        // Brand
-        indigo: {
-          50: "#F5F5FF",
-          100: "#EDEBFF",
-          200: "#D9D6FF",
-          300: "#BAB4FF",
-          400: "#928BFF",
-          500: "#635BFF", // primary
-          600: "#5048E5",
-          700: "#3D36C7",
-          800: "#2D27A0",
-          900: "#1F1A78",
+        // Primary accent: crate-stamp red.
+        crate: {
+          50: "#FBEEEA",
+          100: "#F4D6CC",
+          200: "#E7AC99",
+          300: "#D98567",
+          400: "#CE633F",
+          500: "#C4432B", // primary
+          600: "#A6371F",
+          700: "#872C19",
+          800: "#682113",
+          900: "#4A170D",
         },
-        // Surfaces (Stripe-ish soft whites + slate)
+        // Secondary accent: produce-leaf green (market-day chips, positive stats).
+        leaf: {
+          50: "#F2F4EA",
+          100: "#E1E7CD",
+          200: "#C4CF9E",
+          300: "#A7B770",
+          400: "#8FA355",
+          500: "#7A8C4A", // secondary
+          600: "#63723B",
+          700: "#4D592D",
+          800: "#37401F",
+          900: "#212713",
+        },
+        // Tertiary accent: price-tag ochre (deltas, highlights).
+        ochre: {
+          50: "#FDF6E7",
+          100: "#F9E7BC",
+          300: "#EFC474",
+          500: "#E0A93C",
+          700: "#B3822A",
+        },
+        // Surfaces: kraft paper, not cold off-white.
         surface: {
           DEFAULT: "#FFFFFF",
-          subtle: "#F6F9FC",
-          muted: "#EFF3F8",
-          border: "#E3E8EF",
+          subtle: "#F7F3EA",
+          muted: "#EFE8D8",
+          border: "#DCD3BE",
         },
         ink: {
-          DEFAULT: "#0A2540", // Stripe deep navy
-          soft: "#425466",
-          muted: "#697386",
-          faint: "#8792A2",
+          DEFAULT: "#1F2A1C",
+          soft: "#3F4A39",
+          muted: "#6B7263",
+          faint: "#8C9284",
         },
-        accent: {
-          sky: "#00D4FF",
-          pink: "#FF7AB6",
-          violet: "#A78BFA",
-        },
-        success: "#0FB67A",
-        danger: "#E5484D",
+        success: "#5C7A2E",
+        danger: "#A6371F",
       },
       boxShadow: {
-        soft: "0 4px 24px -8px rgba(50, 50, 93, 0.12), 0 2px 6px -2px rgba(0, 0, 0, 0.04)",
-        ring: "0 0 0 4px rgba(99, 91, 255, 0.18)",
+        // Flat by design: a single hairline, no blurred glow. Kept as a
+        // token (rather than inlined `border`) so a future surface that
+        // truly needs lift (a modal, a dropdown) has one place to define it.
+        soft: "0 1px 0 0 rgba(31, 42, 28, 0.08)",
+        ring: "0 0 0 3px rgba(196, 67, 43, 0.22)",
       },
       backgroundImage: {
-        "brand-gradient": "linear-gradient(135deg, #635BFF 0%, #A78BFA 45%, #00D4FF 100%)",
-        "page-glow":
-          "radial-gradient(ellipse 80% 50% at 50% -20%, rgba(99,91,255,0.18), transparent)",
+        "brand-gradient": "linear-gradient(135deg, #C4432B 0%, #E0A93C 100%)",
       },
       borderRadius: {
-        xl: "12px",
-        "2xl": "16px",
+        xl: "6px",
+        "2xl": "8px",
       },
     },
   },

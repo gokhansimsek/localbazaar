@@ -43,6 +43,7 @@ from local_bazaar.scrapers.base import (
     ProductPrice,
     fetch_with_retry,
     http_client,
+    is_allowed,
     upsert_prices,
 )
 
@@ -86,8 +87,12 @@ class AdanaScraper:
             session: An open async DB session.
 
         Returns:
-            Total rows written across newly-scraped days.
+            Total rows written across newly-scraped days. ``0`` is also
+            returned when ``robots.txt`` disallows this run entirely.
         """
+        if not await is_allowed(_LISTING_URL):
+            log.warning("adana: robots.txt disallows %s — skipping this run.", _LISTING_URL)
+            return 0
         today = _today_istanbul()
         cutoff = today - timedelta(days=self.lookback_days)
         total = 0

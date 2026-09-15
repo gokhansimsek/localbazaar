@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { use, useCallback, useEffect, useMemo, useState } from "react";
 import { LocateFixed, MapPinPlus } from "lucide-react";
 import { MarketsMap } from "@/components/MarketsMap";
 import { SuggestionForm } from "@/components/SuggestionForm";
@@ -24,13 +24,29 @@ const TYPES: { value: MarketTypeSlug | "all"; label: string }[] = [
 
 const DAYS = ["Pazartesi", "Salı", "Çarşamba", "Perşembe", "Cuma", "Cumartesi", "Pazar"] as const;
 
-export default function MarketsPage() {
+type SearchParams = Promise<Record<string, string | string[] | undefined>>;
+
+export default function MarketsPage({ searchParams }: { searchParams: SearchParams }) {
+  // Deep links from the footer and mobile tab bar: ?il=<province slug> and
+  // ?gun=<day name | "bugun">. The effects below re-apply them when the query
+  // changes while this page stays mounted (e.g. clicking another city link).
+  const query = use(searchParams);
+  const provinceParam = firstParam(query.il);
+  const dayParam = firstParam(query.gun);
   const [provinces, setProvinces] = useState<Province[]>([]);
   const [districts, setDistricts] = useState<District[]>([]);
-  const [province, setProvince] = useState<string>("");
+  const [province, setProvince] = useState<string>(provinceParam);
   const [district, setDistrict] = useState<string>("");
   const [marketType, setMarketType] = useState<MarketTypeSlug | "all">("all");
-  const [day, setDay] = useState<string>("");
+  const [day, setDay] = useState<string>(() => dayFromParam(dayParam));
+
+  useEffect(() => {
+    setProvince(provinceParam);
+  }, [provinceParam]);
+
+  useEffect(() => {
+    setDay(dayFromParam(dayParam));
+  }, [dayParam]);
   const [markets, setMarkets] = useState<MarketOut[]>([]);
   const [loading, setLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
@@ -68,7 +84,6 @@ export default function MarketsPage() {
           const { province: provinceName, district: districtName } = await reverseGeocode(
             coords.latitude,
             coords.longitude,
-            apiKey,
           );
           if (!provinceName) {
             setLocationError("Konumunuzdan bir il belirlenemedi.");
@@ -125,9 +140,17 @@ export default function MarketsPage() {
       setDistrict("");
       return;
     }
+    let cancelled = false;
     listDistricts(province)
-      .then(setDistricts)
-      .catch((e) => setError(String(e)));
+      .then((d) => {
+        if (!cancelled) setDistricts(d);
+      })
+      .catch((e) => {
+        if (!cancelled) setError(String(e));
+      });
+    return () => {
+      cancelled = true;
+    };
   }, [province]);
 
   useEffect(() => {
@@ -136,6 +159,7 @@ export default function MarketsPage() {
       setLoading(false);
       return;
     }
+    let cancelled = false;
     setLoading(true);
     setError(null);
     listMarkets({
@@ -145,9 +169,18 @@ export default function MarketsPage() {
       day: day || undefined,
       geocoded: true,
     })
-      .then(setMarkets)
-      .catch((e) => setError(String(e)))
-      .finally(() => setLoading(false));
+      .then((m) => {
+        if (!cancelled) setMarkets(m);
+      })
+      .catch((e) => {
+        if (!cancelled) setError(String(e));
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
   }, [province, district, marketType, day, hasActiveFilter]);
 
   const stats = useMemo(() => {
@@ -174,16 +207,13 @@ export default function MarketsPage() {
   return (
     <div className="space-y-6">
       <header className="flex flex-wrap items-end justify-between gap-3">
-        <div className="space-y-2">
-          <span className="chip">Pazarlar</span>
-          <h1 className="text-3xl font-semibold tracking-tight lg:text-4xl">Pazar Yerleri</h1>
-        </div>
+        <h1 className="text-3xl font-semibold lg:text-5xl">Pazar Yerleri</h1>
         <div className="flex flex-wrap items-center gap-2">
           <button
             type="button"
             onClick={useMyLocation}
             disabled={locating}
-            className="inline-flex items-center gap-2 rounded-xl border border-surface-border bg-white px-3 py-2 text-sm font-medium text-ink-soft transition-colors hover:border-indigo-300 hover:text-indigo-700 disabled:opacity-60"
+            className="inline-flex items-center gap-2 rounded-xl border border-surface-border bg-white px-3 py-2 text-sm font-medium text-ink-soft transition-colors hover:border-ink-faint hover:text-crate-700 disabled:opacity-60"
           >
             <LocateFixed size={14} />
             {locating ? "Konum alınıyor…" : "Konumumu Kullan"}
@@ -233,7 +263,7 @@ export default function MarketsPage() {
                 className={cn(
                   "flex-1 rounded-lg px-3 py-1.5 text-xs font-medium transition-all",
                   marketType === t.value
-                    ? "bg-indigo-500 text-white shadow-soft"
+                    ? "bg-ink text-surface-subtle"
                     : "text-ink-soft hover:bg-surface-muted",
                 )}
               >
@@ -252,8 +282,8 @@ export default function MarketsPage() {
           className={cn(
             "rounded-full px-3 py-1 font-medium transition-colors",
             day === ""
-              ? "bg-indigo-500 text-white shadow-soft"
-              : "border border-surface-border bg-white text-ink-soft hover:border-indigo-300 hover:text-indigo-700",
+              ? "bg-ink text-surface-subtle"
+              : "border border-surface-border bg-white text-ink-soft hover:border-ink-faint hover:text-crate-700",
           )}
         >
           Tümü
@@ -266,8 +296,8 @@ export default function MarketsPage() {
             className={cn(
               "rounded-full px-3 py-1 font-medium transition-colors",
               day === d
-                ? "bg-indigo-500 text-white shadow-soft"
-                : "border border-surface-border bg-white text-ink-soft hover:border-indigo-300 hover:text-indigo-700",
+                ? "bg-ink text-surface-subtle"
+                : "border border-surface-border bg-white text-ink-soft hover:border-ink-faint hover:text-crate-700",
             )}
           >
             {d}
@@ -345,7 +375,7 @@ function FilterSelect({
         value={value}
         onChange={(e) => onChange(e.target.value)}
         disabled={disabled}
-        className="rounded-xl border border-surface-border bg-white px-3 py-2 text-sm text-ink outline-none transition-all focus:border-indigo-400 focus:shadow-ring disabled:opacity-50"
+        className="rounded-xl border border-surface-border bg-white px-3 py-2 text-sm text-ink outline-none transition-all focus:border-crate-400 focus:shadow-ring disabled:opacity-50"
       >
         {children}
       </select>
@@ -353,31 +383,52 @@ function FilterSelect({
   );
 }
 
+/**
+ * Wait for the Google Maps JS SDK to finish loading.
+ *
+ * `MarketsMap` mounts `<APIProvider>` (which injects the script) as soon as
+ * an API key is configured, but a fast click on "Konumumu Kullan" can race
+ * ahead of that load — so poll briefly instead of assuming it's ready.
+ */
+function waitForGoogleMaps(timeoutMs = 8000): Promise<typeof google> {
+  return new Promise((resolve, reject) => {
+    const start = Date.now();
+    const check = (): void => {
+      if (typeof google !== "undefined" && google.maps?.Geocoder) {
+        resolve(google);
+        return;
+      }
+      if (Date.now() - start > timeoutMs) {
+        reject(new Error("Google Maps henüz yüklenmedi."));
+        return;
+      }
+      setTimeout(check, 150);
+    };
+    check();
+  });
+}
+
 async function reverseGeocode(
   lat: number,
   lng: number,
-  apiKey: string,
 ): Promise<{ province: string | null; district: string | null }> {
-  const url =
-    "https://maps.googleapis.com/maps/api/geocode/json" +
-    `?latlng=${lat},${lng}` +
-    "&language=tr&region=tr" +
-    `&key=${apiKey}`;
-  const res = await fetch(url);
-  if (!res.ok) throw new Error(`Geocode failed: ${res.status}`);
-  const data = (await res.json()) as {
-    status: string;
-    results: Array<{
-      address_components: Array<{ long_name: string; short_name: string; types: string[] }>;
-    }>;
-  };
-  if (data.status !== "OK") return { province: null, district: null };
+  // Reuse the Maps JS SDK that `MarketsMap`'s `<APIProvider>` already loaded
+  // (via the browser key) instead of a second REST call — Google's REST
+  // Geocoding endpoint expects an IP-restricted server key, not the
+  // HTTP-referrer-restricted browser key this project uses for JS libraries.
+  const g = await waitForGoogleMaps();
+  const geocoder = new g.maps.Geocoder();
+  const { results } = await geocoder.geocode({
+    location: { lat, lng },
+    language: "tr",
+    region: "tr",
+  });
   // Walk every result and prefer the first administrative_area_level_1 /
   // _level_2 we see. Google may split the answer across multiple results
   // (street, neighborhood, etc.) so we don't assume both live on the same one.
   let province: string | null = null;
   let district: string | null = null;
-  for (const result of data.results) {
+  for (const result of results) {
     for (const comp of result.address_components) {
       if (!province && comp.types.includes("administrative_area_level_1")) {
         province = comp.long_name;
@@ -398,4 +449,20 @@ function tcLower(s: string): string {
 function matchByName<T extends { name: string }>(items: T[], name: string): T | undefined {
   const target = tcLower(name);
   return items.find((item) => tcLower(item.name) === target);
+}
+
+function firstParam(value: string | string[] | undefined): string {
+  return (Array.isArray(value) ? value[0] : value) ?? "";
+}
+
+/** Map a ?gun= value to a DAYS entry; "bugun" resolves to today in Turkey. */
+function dayFromParam(value: string): string {
+  if (value === "bugun") {
+    const today = new Intl.DateTimeFormat("tr-TR", {
+      weekday: "long",
+      timeZone: "Europe/Istanbul",
+    }).format(new Date());
+    return DAYS.find((d) => tcLower(d) === tcLower(today)) ?? "";
+  }
+  return (DAYS as readonly string[]).includes(value) ? value : "";
 }

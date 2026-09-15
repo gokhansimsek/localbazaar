@@ -1,0 +1,29 @@
+# Own project name: without it this file shares the "localbazaar" project with
+# docker-compose.yml (same directory), so each treats the other's containers
+# as orphans and `--remove-orphans` from either would delete the other stack.
+name: localbazaar-test
+
+services:
+  # Postgres 17 for the backend test suite (apps/api/tests). Production data
+  # lives on RDS — this is a disposable local instance so `TEST_DATABASE_URL`
+  # never points at anything that matters. Data lives on tmpfs: every
+  # `docker compose down` (or container restart) starts from a clean database
+  # on purpose, matching how apps/api/tests/conftest.py's `db_session` fixture
+  # already creates and drops its own tables per test.
+  test-db:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: local_bazaar_test
+      POSTGRES_PASSWORD: local_bazaar_test
+      POSTGRES_DB: local_bazaar_test
+    ports:
+      # A different port than any dev Postgres on 5432, and loopback-only —
+      # this never needs to be reachable outside the developer's machine.
+      - "127.0.0.1:5433:5432"
+    tmpfs:
+      - /var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U local_bazaar_test -d local_bazaar_test"]
+      interval: 2s
+      timeout: 3s
+      retries: 20

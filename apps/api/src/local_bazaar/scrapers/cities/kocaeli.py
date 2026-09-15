@@ -37,6 +37,7 @@ from local_bazaar.scrapers.base import (
     ProductPrice,
     fetch_with_retry,
     http_client,
+    is_allowed,
     upsert_prices,
 )
 
@@ -45,6 +46,9 @@ log = logging.getLogger(__name__)
 CITY_NAME = "Kocaeli"
 _SLUG = "kocaeli"
 _URL_TEMPLATE = "https://www.kocaeli.bel.tr/hal-fiyatlari/d-{date}-h-1.html"
+# Every per-date bulletin URL shares this path prefix; check robots.txt once
+# against it rather than against each individually-dated URL.
+_ROBOTS_CHECK_URL = "https://www.kocaeli.bel.tr/hal-fiyatlari/"
 _DEFAULT_LOOKBACK_DAYS = 160
 _DAY_SLEEP = 0.5
 
@@ -75,8 +79,12 @@ class KocaeliScraper:
             session: An open async DB session.
 
         Returns:
-            Total rows written across newly-scraped days.
+            Total rows written across newly-scraped days. ``0`` is also
+            returned when ``robots.txt`` disallows this run entirely.
         """
+        if not await is_allowed(_ROBOTS_CHECK_URL):
+            log.warning("kocaeli: robots.txt disallows %s — skipping this run.", _ROBOTS_CHECK_URL)
+            return 0
         today = _today_istanbul()
         total = 0
         async with http_client() as client:

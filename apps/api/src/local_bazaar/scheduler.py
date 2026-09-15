@@ -126,6 +126,11 @@ async def _safe_scrape(
         run.rows_written = rows_written or 0
     except Exception as exc:  # scheduled job must catch broadly so it does not crash
         log.exception("Scrape '%s' failed", scraper_name)
+        # A DB-level failure inside fn() leaves the shared session's transaction
+        # aborted; roll it back before recording the run, or the commit below
+        # raises and takes down every remaining scraper in this run() call.
+        await session.rollback()
+        await session.refresh(run)
         run.status = ScrapeRunStatus.FAILED
         run.error = str(exc)[:1900]
     finally:

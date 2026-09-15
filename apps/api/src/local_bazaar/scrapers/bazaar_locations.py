@@ -38,7 +38,7 @@ from sqlmodel import col, select
 
 from local_bazaar.db import city_slug
 from local_bazaar.models import District, Market, MarketType, Province
-from local_bazaar.scrapers.base import fetch_with_retry, http_client
+from local_bazaar.scrapers.base import fetch_with_retry, http_client, is_allowed
 
 log = logging.getLogger(__name__)
 
@@ -413,7 +413,12 @@ class BazaarLocationsScraper:
 
         Returns:
             Total number of market rows written (or refreshed) in this run.
+            ``0`` is also returned when ``robots.txt`` disallows this run
+            entirely.
         """
+        if not await is_allowed(URL):
+            log.warning("bazaar-locations: robots.txt disallows %s — skipping this run.", URL)
+            return 0
         total = 0
         async with http_client() as client:
             initial = await fetch_with_retry(client, "GET", URL)

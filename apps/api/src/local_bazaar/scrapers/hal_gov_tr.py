@@ -45,6 +45,7 @@ from local_bazaar.scrapers.base import (
     ProductPrice,
     fetch_with_retry,
     http_client,
+    is_allowed,
     upsert_prices,
 )
 
@@ -105,8 +106,12 @@ class HalGovTrScraper:
         Returns:
             Total rows written across all newly-scraped days. ``0`` is a valid
             return — it means every day in the lookback window already has
-            data (or the source has none to give for the gaps).
+            data (or the source has none to give for the gaps), or that
+            ``robots.txt`` disallows this run entirely.
         """
+        if not await is_allowed(URL):
+            log.warning("hal.gov.tr: robots.txt disallows %s — skipping this run.", URL)
+            return 0
         today = _today_istanbul()
         total = 0
         for offset in range(self.lookback_days):

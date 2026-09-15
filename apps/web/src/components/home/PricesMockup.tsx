@@ -23,43 +23,38 @@ const ROWS: Row[] = [
 export function PricesMockup() {
   const loop = [...ROWS, ...ROWS];
   return (
-    <div className="relative aspect-[5/4] w-full overflow-hidden rounded-2xl border border-surface-border bg-white shadow-soft">
-      <div className="flex items-center justify-between border-b border-surface-border px-4 py-2.5">
-        <div className="flex items-center gap-2 text-[10.5px] font-medium uppercase tracking-[0.16em] text-ink-muted">
-          <span className="relative inline-flex h-1.5 w-1.5">
-            <span className="absolute inline-flex h-full w-full rounded-full bg-success/70 opacity-75 motion-safe:animate-ping" />
-            <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-success" />
-          </span>
-          Canlı Bülten
-        </div>
-        <div className="font-mono text-[10px] text-ink-faint">10 HAZ · TRY</div>
+    <div className="relative aspect-[5/4] w-full overflow-hidden rounded-2xl border border-surface-border bg-white">
+      <div className="flex items-center justify-between border-b border-surface-border bg-surface-subtle px-4 py-2.5">
+        <div className="font-display text-[13px] font-semibold text-ink">Günlük bülten</div>
+        <div className="text-[11px] tabular-nums text-ink-muted">10 Haziran</div>
       </div>
 
-      <div className="pointer-events-none absolute inset-x-0 top-9 z-10 h-10 bg-gradient-to-b from-white to-transparent" />
+      <div className="pointer-events-none absolute inset-x-0 top-10 z-10 h-10 bg-gradient-to-b from-white to-transparent" />
       <div className="pointer-events-none absolute inset-x-0 bottom-0 z-10 h-14 bg-gradient-to-t from-white to-transparent" />
 
-      <div className="relative h-[calc(100%-2.55rem)]">
+      <div className="relative h-[calc(100%-2.6rem)]">
         <div className="motion-safe:animate-[priceScroll_22s_linear_infinite]">
           {loop.map((row, i) => (
             <div
               key={i}
-              className="flex items-center justify-between border-b border-surface-border/60 px-4 py-[9px]"
+              className="flex items-center justify-between border-b border-surface-border/70 px-4 py-[9px]"
             >
               <div className="min-w-0">
                 <div className="text-[13px] font-medium text-ink">{row.name}</div>
-                <div className="text-[10px] text-ink-faint">
-                  {row.variety} · {row.unit}
-                </div>
+                <div className="text-[10px] text-ink-faint">{row.variety}</div>
               </div>
               <div className="flex items-center gap-2.5">
-                <span className="font-mono text-[13px] font-semibold tabular-nums text-ink">
+                <span className="text-[13px] font-semibold tabular-nums text-ink">
                   {row.price} ₺
+                  <span className="ml-0.5 text-[10px] font-normal text-ink-faint">
+                    /{row.unit.toLocaleLowerCase("tr-TR")}
+                  </span>
                 </span>
                 <span
                   className={
                     row.dir === "up"
-                      ? "inline-flex items-center gap-0.5 rounded-md bg-success/10 px-1.5 py-0.5 font-mono text-[10px] font-semibold text-success"
-                      : "inline-flex items-center gap-0.5 rounded-md bg-danger/10 px-1.5 py-0.5 font-mono text-[10px] font-semibold text-danger"
+                      ? "inline-flex items-center gap-0.5 rounded-sm bg-surface-subtle px-1.5 py-0.5 text-[10px] font-semibold tabular-nums text-success"
+                      : "inline-flex items-center gap-0.5 rounded-sm bg-surface-subtle px-1.5 py-0.5 text-[10px] font-semibold tabular-nums text-danger"
                   }
                 >
                   {row.dir === "up" ? (

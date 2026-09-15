@@ -80,7 +80,7 @@ export function PriceTable({ rows, pageSize = DEFAULT_PAGE_SIZE }: Props) {
             placeholder="Ürün ara…"
             value={q}
             onChange={(e) => setQ(e.target.value)}
-            className="w-72 max-w-full rounded-xl border border-surface-border bg-surface-subtle py-2 pl-9 pr-3 text-sm outline-none transition-all focus:border-indigo-400 focus:shadow-ring"
+            className="w-72 max-w-full rounded-xl border border-surface-border bg-surface-subtle py-2 pl-9 pr-3 text-sm outline-none transition-all focus:border-crate-400 focus:shadow-ring"
           />
         </div>
         <span className="text-xs text-ink-muted">{filtered.length} kayıt</span>
@@ -89,7 +89,7 @@ export function PriceTable({ rows, pageSize = DEFAULT_PAGE_SIZE }: Props) {
       <div className="overflow-x-auto">
         <table className="min-w-full text-sm">
           <thead>
-            <tr className="bg-surface-subtle/70 text-xs uppercase tracking-wide text-ink-muted">
+            <tr className="bg-surface-subtle text-xs font-semibold text-ink-muted">
               <Th
                 label="Ürün"
                 k="product_name"
@@ -137,7 +137,7 @@ export function PriceTable({ rows, pageSize = DEFAULT_PAGE_SIZE }: Props) {
                 <td className="px-5 py-3">
                   <Link
                     href={`/products/${encodeURIComponent(r.product_name)}`}
-                    className="font-medium text-ink hover:text-indigo-700"
+                    className="font-medium text-ink hover:text-crate-700"
                   >
                     {r.product_name}
                   </Link>
@@ -224,9 +224,7 @@ function Pagination({
               onClick={() => onChange(n)}
               className={cn(
                 "min-w-8 rounded-lg px-2 py-1 font-medium transition-colors",
-                n === page
-                  ? "bg-indigo-500 text-white shadow-soft"
-                  : "text-ink-soft hover:bg-surface-muted",
+                n === page ? "bg-ink text-surface-subtle" : "text-ink-soft hover:bg-surface-muted",
               )}
             >
               {n}
@@ -293,7 +291,7 @@ function Th({
           size={12}
           className={cn(
             "transition-opacity",
-            active ? "text-indigo-500 opacity-100" : "opacity-30",
+            active ? "text-crate-500 opacity-100" : "opacity-30",
             active && sortDir === "desc" && "rotate-180",
           )}
         />

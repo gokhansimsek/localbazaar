@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { ArrowRight } from "lucide-react";
 import { CitySelector } from "@/components/CitySelector";
 import { DateSelector } from "@/components/DateSelector";
 import { PriceTable } from "@/components/PriceTable";
@@ -12,7 +11,7 @@ import { formatDate, todayIso } from "@/lib/format";
 // city pill picker (the user wants the picker to surface real provinces only).
 const DEFAULT_CITY_SLUG = "national";
 
-export default function HomePage() {
+export default function PricesPage() {
   const [cities, setCities] = useState<City[]>([]);
   const [activeCity, setActiveCity] = useState<string>(DEFAULT_CITY_SLUG);
   const [date, setDate] = useState<string>("");
@@ -28,12 +27,22 @@ export default function HomePage() {
 
   useEffect(() => {
     if (!activeCity) return;
+    let cancelled = false;
     setLoading(true);
     setError(null);
     cityPrices(activeCity, date || undefined)
-      .then((r) => setRows(r))
-      .catch((e) => setError(String(e)))
-      .finally(() => setLoading(false));
+      .then((r) => {
+        if (!cancelled) setRows(r);
+      })
+      .catch((e) => {
+        if (!cancelled) setError(String(e));
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
   }, [activeCity, date]);
 
   const selectableCities = useMemo(() => {
@@ -47,8 +56,7 @@ export default function HomePage() {
   return (
     <div className="space-y-8">
       <header className="space-y-3">
-        <span className="chip">Günlük bülten</span>
-        <h1 className="text-3xl font-semibold tracking-tight lg:text-4xl">Hal Fiyatları</h1>
+        <h1 className="text-3xl font-semibold lg:text-5xl">Hal Fiyatları</h1>
         <p className="max-w-2xl text-ink-soft">
           Türkiye&apos;deki hal fiyatlarını ürün ve şehir bazında günlük olarak izleyin. Bir ürüne
           tıklayarak tarihsel grafiğini açın.
@@ -82,11 +90,6 @@ export default function HomePage() {
       ) : (
         <PriceTable rows={rows} />
       )}
-
-      <footer className="flex items-center gap-1 text-xs text-ink-faint">
-        <span>Detaylı analiz için bir ürüne tıklayın</span>
-        <ArrowRight size={12} />
-      </footer>
     </div>
   );
 }

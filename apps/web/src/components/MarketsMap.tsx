@@ -106,7 +106,7 @@ export function MarketsMap({
                 }}
               >
                 <Pin
-                  background={m.market_type === "semt_pazari" ? "#635BFF" : "#00D4FF"}
+                  background={m.market_type === "semt_pazari" ? "#C4432B" : "#7A8C4A"}
                   borderColor="#FFFFFF"
                   glyphColor="#FFFFFF"
                 />
@@ -114,7 +114,7 @@ export function MarketsMap({
             ))}
             {draftPin && (
               <AdvancedMarker position={draftPin}>
-                <Pin background="#FF7AB6" borderColor="#FFFFFF" glyphColor="#FFFFFF" />
+                <Pin background="#E0A93C" borderColor="#FFFFFF" glyphColor="#1F2A1C" />
               </AdvancedMarker>
             )}
             {active && active.latitude !== null && active.longitude !== null && (

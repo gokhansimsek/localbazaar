@@ -45,6 +45,7 @@ from local_bazaar.scrapers.base import (
     ProductPrice,
     fetch_with_retry,
     http_client,
+    is_allowed,
     upsert_prices,
 )
 
@@ -98,8 +99,12 @@ class KonyaScraper:
         Returns:
             Total rows written across all newly-scraped days. ``0`` is a valid
             return — it means every published bulletin in the lookback window is
-            already in the DB (or the source has nothing to give).
+            already in the DB (or the source has nothing to give), or that
+            ``robots.txt`` disallows this run entirely.
         """
+        if not await is_allowed(URL):
+            log.warning("konya.bel.tr: robots.txt disallows %s — skipping this run.", URL)
+            return 0
         today = _today_istanbul()
         cutoff = today - timedelta(days=self.lookback_days - 1)
 

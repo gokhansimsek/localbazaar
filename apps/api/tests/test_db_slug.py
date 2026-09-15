@@ -54,24 +54,15 @@ def test_prices_table_has_expected_columns() -> None:
     assert column_names == {
         "id",
         "bulletin_date",
-        "product_name",
-        "product_variety",
-        "product_category",
+        "product_id",
         "average_price",
         "transaction_volume",
-        "unit_name",
         "last_updated",
     }
 
 
-def test_prices_table_unique_constraint_includes_bulletin_and_product_attrs() -> None:
+def test_prices_table_unique_constraint_includes_bulletin_and_product_id() -> None:
     t = prices_table("test_uniq")
     unique = next(c for c in t.constraints if isinstance(c, UniqueConstraint))
     cols = {c.name for c in unique.columns}
-    assert cols == {
-        "bulletin_date",
-        "product_name",
-        "product_variety",
-        "product_category",
-        "unit_name",
-    }
+    assert cols == {"bulletin_date", "product_id"}

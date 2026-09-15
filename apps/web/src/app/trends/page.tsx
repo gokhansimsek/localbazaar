@@ -77,12 +77,22 @@ export default function TrendsPage() {
 
   useEffect(() => {
     if (!selected) return;
+    let cancelled = false;
     setLoading(true);
     setError(null);
     productHistory(selected)
-      .then(setDailyPoints)
-      .catch((e) => setError(String(e)))
-      .finally(() => setLoading(false));
+      .then((p) => {
+        if (!cancelled) setDailyPoints(p);
+      })
+      .catch((e) => {
+        if (!cancelled) setError(String(e));
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
   }, [selected]);
 
   const activeRange = RANGES.find((r) => r.key === activeRangeKey) ?? RANGES[2];
@@ -96,6 +106,7 @@ export default function TrendsPage() {
     // Wait for the full history to land so range bounds anchor on the real
     // latest date instead of firing an unbounded full-history fill first.
     if (dailyPoints.length === 0) return;
+    let cancelled = false;
     const { from, to } = rangeBounds(dailyPoints, activeRange);
     const opts: Parameters<typeof productHistory>[1] = {
       granularity: activeRange.granularity,
@@ -104,8 +115,15 @@ export default function TrendsPage() {
     if (from) opts.from = from;
     if (to) opts.to = to;
     productHistory(selected, opts)
-      .then(setChartPoints)
-      .catch((e) => setError(String(e)));
+      .then((p) => {
+        if (!cancelled) setChartPoints(p);
+      })
+      .catch((e) => {
+        if (!cancelled) setError(String(e));
+      });
+    return () => {
+      cancelled = true;
+    };
   }, [selected, activeRange, dailyPoints]);
 
   const buckets = useMemo(() => computeBuckets(dailyPoints), [dailyPoints]);
@@ -126,8 +144,7 @@ export default function TrendsPage() {
   return (
     <div className="space-y-8">
       <header className="space-y-2">
-        <span className="chip">Fiyat İstatistikleri</span>
-        <h1 className="text-3xl font-semibold tracking-tight lg:text-4xl">Fiyat İstatistikleri</h1>
+        <h1 className="text-3xl font-semibold lg:text-5xl">Fiyat İstatistikleri</h1>
         <p className="max-w-2xl text-ink-soft">
           Bir ürün seçin; bugünden son bir yıla kadar farklı zaman aralıklarında ortalama fiyat
           değişimini görün. Aşağıdaki kartlardan birini seçerek grafiği filtreleyin.
@@ -180,11 +197,11 @@ export default function TrendsPage() {
           </section>
 
           <section>
-            <h2 className="mb-3 flex items-center justify-between text-sm font-medium text-ink-muted">
+            <h2 className="mb-3 flex items-center justify-between font-sans text-sm font-medium text-ink-muted">
               <span>
                 Tarihsel seri · <span className="text-ink">{activeRange.label}</span>
               </span>
-              <span className="text-[11px] uppercase tracking-wide text-ink-faint">
+              <span className="text-xs text-ink-faint">
                 {granularityLabel(activeRange.granularity)} · eksik noktalar otomatik olarak
                 doldurulmuştur
               </span>
@@ -338,23 +355,14 @@ function BucketCard({
       aria-selected={active}
       onClick={onSelect}
       className={cn(
-        "card focus-visible:ring-brand p-4 text-left transition focus:outline-none focus-visible:ring-2",
-        active
-          ? "border-brand bg-brand/5 ring-brand/40 ring-1"
-          : "hover:border-ink-faint hover:bg-ink-faint/5",
+        "card p-4 text-left transition-colors",
+        active ? "border-ink ring-1 ring-ink" : "hover:border-ink-faint",
       )}
     >
-      <div className="flex items-center justify-between">
-        <div className="text-xs uppercase tracking-wide text-ink-muted">{range.label}</div>
-        {active && (
-          <span className="bg-brand/10 text-brand rounded-full px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide">
-            seçili
-          </span>
-        )}
-      </div>
+      <div className="text-xs font-medium text-ink-muted">{range.label}</div>
       {hasData ? (
         <>
-          <div className="mt-1 text-xl font-semibold tabular-nums">
+          <div className="mt-1 font-display text-xl font-semibold tabular-nums">
             {formatPrice(bucket!.latest ?? 0)}
           </div>
           {bucket!.samples > 1 && Number.isFinite(bucket!.deltaPct) && (
@@ -368,9 +376,7 @@ function BucketCard({
               {`${(bucket!.deltaPct ?? 0) >= 0 ? "+" : ""}${(bucket!.deltaPct ?? 0).toFixed(2)} %`}
             </div>
           )}
-          <div className="mt-2 text-[10px] uppercase tracking-wide text-ink-faint">
-            {bucket!.samples} kayıt
-          </div>
+          <div className="mt-2 text-[11px] text-ink-faint">{bucket!.samples} kayıt</div>
           {bucket!.min !== null && bucket!.max !== null && bucket!.samples > 1 && (
             <div className="mt-0.5 text-[11px] text-ink-muted">
               {formatPrice(bucket!.min)} – {formatPrice(bucket!.max)}

@@ -279,3 +279,21 @@ class PlaceSuggestion(SQLModel, table=True):
         sa_column=Column(DateTime(timezone=True), nullable=True),
     )
     review_note: str | None = Field(default=None, sa_column=Column(Text, nullable=True))
+
+
+class NewsletterSubscriber(SQLModel, table=True):
+    """An email address that opted in to the site newsletter.
+
+    Signups require an explicit consent checkbox, so ``created_at`` doubles as
+    the consent timestamp. Emails are stored lowercased and unique, making a
+    repeat signup a no-op (``ON CONFLICT DO NOTHING``).
+    """
+
+    __tablename__ = "newsletter_subscribers"
+
+    id: int | None = Field(default=None, primary_key=True)
+    email: str = Field(sa_column=Column(Text, nullable=False, unique=True, index=True))
+    created_at: datetime = Field(
+        default_factory=_utcnow,
+        sa_column=Column(DateTime(timezone=True), server_default=func.now(), nullable=False),
+    )

@@ -9,7 +9,7 @@ Guidance for Claude Code sessions working in this repo.
 1. **Hal Fiyatları** — daily and historical wholesale-market ("hal") prices for agricultural produce, sourced from the national `hal.gov.tr` bulletin plus nine per-city sources. Every price row references a row in a normalized `products` registry (one row per name × variety × category × unit); only fruit/vegetable produce is kept (fish/seafood is dropped).
 2. **Pazar Yerleri** — every neighborhood (semt) and producer (üretici) market published by hal.gov.tr, normalized into provinces → districts → markets and geocoded via the Google Maps Geocoding API for display on a map. Visitors can submit crowdsourced add/update suggestions (queued for manual review).
 
-A FastAPI backend exposes the data; a Next.js UI renders a Linear-style landing page at `/`, Hal Fiyatları at `/prices`, historical trends at `/trends`, per-product detail at `/products/[name]`, a Google Maps view of pazar yerleri at `/markets`, and a privacy policy at `/privacy`. The system is deployed as containers on AWS via Kubernetes.
+A FastAPI backend exposes the data; a Next.js UI renders a landing page at `/`, Hal Fiyatları at `/prices`, historical trends at `/trends`, per-product detail at `/products/[name]`, a Google Maps view of pazar yerleri at `/markets`, a privacy policy at `/privacy`, and text pages at `/about`, `/contact`, `/terms`, `/cookies`. Every page shares a footer (popular-city links, info links, newsletter signup) and, on phones, a fixed bottom tab bar. The system is deployed as containers on AWS via Kubernetes.
 
 ### Internal naming
 
@@ -25,7 +25,7 @@ Internal identifiers use `local_bazaar` (snake) / `local-bazaar` (kebab) consist
 Scaffolding is complete and gated by quality tools. The repo has:
 
 - A working monorepo (`apps/api`, `apps/web`, `deploy/k8s`).
-- Fourteen Alembic migrations:
+- Fifteen Alembic migrations:
   - `0001_initial_schema` (cities + scrape_runs + `prices_national` + provinces + districts + markets)
   - `0002_seed_tr_geography` (81 provinces + 973 districts from a checked-in JSON fixture)
   - `0003_widen_markets_address` (column widen for free-text addresses)
@@ -40,16 +40,18 @@ Scaffolding is complete and gated by quality tools. The repo has:
   - `0012_promote_category_words` (moves İthal/Yerli tags from `variety` into `category`)
   - `0013_merge_turp_otu` (merges split `(Turp, Otu)` rows into `(Turp Otu, NULL)`)
   - `0014_user_place_suggestions` (lightweight `users` + `place_suggestions` tables for the suggestion feature)
+  - `0015_newsletter_subscribers` (opted-in emails from the footer newsletter form)
 - Eleven scrapers:
   - `hal_gov_tr` — national bulletin (synthetic city `national`)
   - `bazaar_locations` — every neighborhood + producer market across all 81 provinces
   - `cities/{adana,ankara,bursa,istanbul,izmir,kocaeli,konya,sanliurfa}` — plain HTTP scrapers
   - `cities/antalya` — Playwright-driven scraper (the source is a Vue SPA)
-- A Linear-style homepage at `/` with three embedded animated UI previews (Markets, Prices, Trends). Sticky top header replaces the old left sidebar; the homepage cards act as primary navigation.
+- A homepage at `/` with three embedded UI previews (Markets, Prices, Trends). Sticky top header replaces the old left sidebar; the homepage cards act as primary navigation.
 - Google Maps geocoding (`geocoding.py`) and a map page (`/markets`) with a "Konumumu Kullan" button that reverse-geocodes the browser's coordinates into both province (`administrative_area_level_1`) and district (`administrative_area_level_2`), plus an in-page **suggestion form** for proposing new markets (drop a pin) or corrections to existing ones.
 - A **hidden, token-gated admin page** at `/admin/suggestions` (no nav link, `noindex` — reached by typing the URL) to review pending suggestions and **approve** (auto-applies: an `add` creates/reuses the `markets` row, resolving the pin's district via reverse geocoding; an `update` applies corrected coordinates) or **reject** them. Access is gated by a shared `ADMIN_TOKEN` sent in the `X-Admin-Token` header.
 - A `/trends` page with a searchable product picker, a Hal (city) multiselect filter, daily/weekly/monthly granularity, and optional server-side least-squares gap-fill on the chart.
-- Page-view analytics: a fire-and-forget `POST /api/page-views` from the client (`PageViewCounter`) increments per-path counters on an allow-list of routes.
+- Page-view analytics: a fire-and-forget `POST /api/page-views` from the client (`PageViewCounter`) increments per-path counters on an allow-list of routes. **New public routes must be added to `_ALLOWED_PATHS` in `api/page_views.py`**, or their views are rejected.
+- A site footer (`SiteFooter`: brand, popular-city deep links, about/contact/legal links, a "Çerez ayarları" button that reopens the Funding Choices dialog when the CMP is enabled, and a newsletter signup) and a phone-only fixed bottom tab bar (`MobileTabBar`; the header's links hide below `sm`). `/markets` reads `?il=<province slug>` and `?gun=<day | bugun>` so those links open pre-filtered. The terms, cookie, and privacy pages are **drafts pending legal review** (marked at the top of each file).
 - Per-IP rate limiting on every `/api/*` route via **slowapi** (`API_RATE_LIMIT`, default `120/minute`), returning a clean JSON 429.
 - Google AdSense + Funding Choices CMP integration, all inert unless `NEXT_PUBLIC_ADSENSE_CLIENT_ID` is set; `/privacy` and `/ads.txt` routes back it.
 - Network-private API model: the browser only ever talks to same-origin `/api/*` on the web service; Next.js proxies via the server-side `API_INTERNAL_URL` rewrite. Locally the API port binds to `127.0.0.1:8000`; in Kubernetes the API Service is `ClusterIP` and the Ingress only routes `/`. `/docs`, `/redoc`, `/openapi.json` are gated by `ENABLE_API_DOCS` (off by default; the local docker-compose sets it to 1 for dev).
@@ -169,6 +171,7 @@ All endpoints are mounted under `/api`; `GET /healthz` (no prefix) is the K8s li
 - **markets** — `GET /provinces`, `GET /provinces/{slug}/districts`, `GET /markets?province=&district=&type=&day=&geocoded=`.
 - **page-views** — `POST /page-views` (atomic increment, allow-list of paths), `GET /page-views` (leaderboard).
 - **suggestions** — `POST /suggestions` (upserts the user by email, stores a `pending` add/update suggestion; honeypot `website` field for spam).
+- **newsletter** — `POST /newsletter` (stores an opted-in email; requires `consent: true`, honeypot `website`; returns the same response for new and existing addresses so it can't be used to probe the list). Only collection is implemented — sending newsletters and unsubscribe links are not.
 - **admin** (token-gated — `X-Admin-Token` must equal `ADMIN_TOKEN`; 503 when unset, 401 on mismatch) — `GET /admin/suggestions?status=`, `POST /admin/suggestions/{id}/approve` (auto-applies), `POST /admin/suggestions/{id}/reject`.
 
 Frontend types mirror these in `apps/web/src/lib/api.ts`; keep both in sync.
@@ -195,7 +198,7 @@ Frontend types mirror these in `apps/web/src/lib/api.ts`; keep both in sync.
 
 - **Next.js 16.2** (App Router) + **React 19.1** + TypeScript (strict)
 - Package manager: **pnpm 9.15.0** (via Corepack), Node >= 20.18
-- Styling: **TailwindCSS** + a Stripe-inspired token set defined in `tailwind.config.ts` (brand indigo `#635BFF`, off-white `#F6F9FC`, deep navy ink `#0A2540`, gradients toward sky `#00D4FF` / pink `#FF7AB6`)
+- Styling: **TailwindCSS** + a market-stall token set in `tailwind.config.ts`: kraft-paper surfaces (`#F7F3EA`), crate-red primary (`#C4432B`), leaf-green (`#7A8C4A`) and price-tag ochre (`#E0A93C`) secondaries, green-black ink (`#1F2A1C`). Flat panels with hairline borders rather than shadowed cards; small radii. Type: **Fraunces** (display) + **Public Sans** (body) via `next/font` (`latin-ext` for Turkish glyphs). The `.price-tag` component in `globals.css` (notched ochre tag) is the one recurring bold motif — reserve it for headline prices, not table rows. Avoid template chrome: all-caps tracked eyebrow labels above headings, monospace data labels, single-word italic headline accents, arrows appended to CTA text.
 - Charts: `recharts`
 - Maps: `@vis.gl/react-google-maps` (Google Maps JS API wrapper)
 - Icons: `lucide-react`
@@ -221,6 +224,7 @@ local_bazaar/
   .gitignore
   .env.example
   docker-compose.yml
+  docker-compose.test.yml      # disposable Postgres 17 for TEST_DATABASE_URL (tmpfs — never RDS)
   .pre-commit-config.yaml      # ruff + flake8 + pyright + prettier + eslint + tsc gates
   apps/
     api/
@@ -247,6 +251,7 @@ local_bazaar/
           0012_promote_category_words.py
           0013_merge_turp_otu.py
           0014_user_place_suggestions.py     # users + place_suggestions
+          0015_newsletter_subscribers.py     # footer newsletter signups
       src/local_bazaar/
         __init__.py
         main.py               # FastAPI app + lifespan; slowapi rate limit; mounts /api routers
@@ -296,7 +301,7 @@ local_bazaar/
       pnpm-lock.yaml           # generated
       next.config.mjs
       tsconfig.json
-      tailwind.config.ts       # Stripe-inspired tokens
+      tailwind.config.ts       # market-stall tokens (kraft / crate / leaf / ochre)
       postcss.config.mjs
       eslint.config.mjs        # Next.js 16 native flat config
       .prettierrc.json         # + prettier-plugin-tailwindcss
@@ -308,7 +313,7 @@ local_bazaar/
       src/
         app/
           layout.tsx                # SiteHeader + main; AdSense/CMP loaders + PageViewCounter
-          page.tsx                  # Linear-style homepage (hero + 3 animated section previews)
+          page.tsx                  # homepage (hero + 3 section previews)
           globals.css               # base styles + @keyframes for the home mockups
           prices/page.tsx           # Hal Fiyatları daily bulletin (moved from `/`)
           trends/page.tsx           # historical series: product picker + Hal multiselect + granularity
@@ -317,10 +322,17 @@ local_bazaar/
           admin/                    # hidden, token-gated suggestion review (noindex)
             layout.tsx              # noindex metadata
             suggestions/page.tsx    # token gate + approve/reject list
-          privacy/                  # privacy policy (AdSense requirement)
+          privacy/                  # privacy policy (AdSense requirement; draft, pending legal review)
+          about/ contact/           # Hakkımızda + İletişim
+          terms/ cookies/           # Kullanım Koşulları + Çerez Politikası (drafts, pending legal review)
           ads.txt/                  # ads.txt route for AdSense
         components/
-          SiteHeader.tsx            # sticky top nav; replaces the old Sidebar
+          SiteHeader.tsx            # sticky top nav; links hidden on phones (MobileTabBar instead)
+          SiteFooter.tsx            # 4-column footer: brand, popular cities, info links, newsletter
+          MobileTabBar.tsx          # phone-only fixed bottom navigation
+          NewsletterForm.tsx        # footer email signup with consent checkbox
+          CookieSettingsButton.tsx  # reopens the Funding Choices consent dialog
+          DocPage.tsx               # shared shell for about/contact/legal pages
           CitySelector.tsx
           DateSelector.tsx
           RangePresets.tsx
@@ -395,6 +407,8 @@ uv run pyright src
 uv run pytest                       # set TEST_DATABASE_URL to also run integration tests
 ```
 
+To run the integration tests locally: `docker compose -f docker-compose.test.yml up -d` starts a disposable Postgres 17 on `localhost:5433` (tmpfs — data doesn't survive a restart, by design), then set `TEST_DATABASE_URL` to it. The `db_session` fixture creates and drops its own tables per test; no migrations or seeding needed for the tests themselves. To point the running app at that database with a small mock dataset instead (for manual exploration, not for pytest), set `DATABASE_URL` to the same URL, run `uv run alembic upgrade head`, then `uv run python scripts/seed_test_db.py`. pytest expects an **empty** database (seeded rows break its assertions, and its teardown drops the tables), so after seeding run `docker compose -f docker-compose.test.yml restart test-db` before `uv run pytest`. See **Running the backend integration tests locally** in `README.md` for the full commands.
+
 ### Frontend (`apps/web`) — standalone
 
 ```powershell
@@ -459,12 +473,12 @@ kubectl -n local-bazaar exec deploy/api -- alembic upgrade head
 
 - **Codebase language is English.** All identifiers, comments, docstrings, log messages, and UI strings are English. Only scraped data values (Turkish product names like "Domates", category enum values like "Geleneksel/Konvansiyonel") remain in Turkish because they come straight from the source. Do not translate scraped data.
 - **Mandatory docstrings and type annotations.** Every public Python function, method, and class needs a docstring. Function docstrings follow the **Google convention** and must include `Args:` for every parameter (except `self`/`cls`) and `Returns:` when the function returns a non-trivial value. Every function signature must carry full parameter and return-type annotations. Tests are exempt from `D` rules but still need annotations. These are enforced by ruff + flake8-docstrings + pyright in pre-commit.
-- **Per-city tables are sacred**: schema differences between `prices_*` tables are not allowed. Schema changes apply to *every* `prices_*` table in one Alembic migration — iterate over `cities` rows and apply.
+- **Per-city tables are sacred**: schema differences between `prices_*` tables are not allowed. Schema changes apply to *every* `prices_*` table in one Alembic migration. Migrations 0007–0013 discover the tables to touch via `SELECT slug FROM cities WHERE enabled = true`, which would silently skip a disabled city's table if it still holds data — a latent bug, left as-is in those already-applied migrations rather than rewritten after the fact. **Any new migration that iterates `prices_*` tables should use `existing_price_table_names()` from `apps/api/migrations/_price_tables.py` instead**, which discovers tables directly from `information_schema` and so covers every table that physically exists, not just enabled ones.
 - **Prices**: `NUMERIC(12,4)` TRY. In Python use `decimal.Decimal`, never float.
 - **Timestamps**: UTC `TIMESTAMPTZ`. Use `datetime.now(timezone.utc)`. Bulletin date (`bulletin_date`) is a `DATE` in Turkey time.
 - **Slugs**: `db.city_slug()` only. Don't re-roll Turkish folding.
 - **Scrapers**: one module per source under `scrapers/`. Each exposes `async run(session) -> int`. Add new sites without touching anything outside `scrapers/` + a `cities` row.
-- **Politeness**: respect robots.txt where the user has not explicitly opted out; set `SCRAPER_USER_AGENT`; small sleep between paginated requests; retry only on network/timeout errors (`tenacity` in `scrapers/base.py`).
+- **Politeness**: respect robots.txt where the user has not explicitly opted out — implemented via `scrapers.base.is_allowed()` (per-origin cached `urllib.robotparser.RobotFileParser`, fails open if `robots.txt` is unreachable/malformed), which `fetch_with_retry()` calls automatically before every httpx-based scraper request, raising `RobotsDisallowedError` on an explicit `Disallow` match; each scraper's `run()` also checks `is_allowed()` once up front so a disallowed site is skipped without touching the network beyond the (cached) `robots.txt` fetch. The Playwright-driven Antalya scraper checks `is_allowed()` explicitly before launching Chromium, since it never calls `fetch_with_retry()`. Also: set `SCRAPER_USER_AGENT`; small sleep between paginated requests; retry only on network/timeout errors (`tenacity` in `scrapers/base.py`).
 - **Scheduler errors**: per-scrape errors must never crash the scheduler. `scheduler._safe_scrape()` records every attempt in `scrape_runs` with status `ok|partial|failed`.
 - **API**: public reads need no auth. Mostly read-only; the unauthenticated writes are `POST /api/page-views` (counter) and `POST /api/suggestions` (queued for review, honeypot-guarded). The `/api/admin/*` review endpoints are the one privileged surface, gated by a shared `ADMIN_TOKEN` in the `X-Admin-Token` header (compared constant-time; 503 when unset). Every route is per-IP rate-limited by slowapi. CORS origins are env-driven (`API_CORS_ORIGINS`) but are no longer load-bearing for security — the API is not exposed to the public internet (see Architecture). When adding endpoints that query per-city tables, guard against `prices_<slug>` not yet existing: use `to_regclass(:name)` or the `_existing_slugs(session, slugs)` helper in `api/prices.py`.
 - **Frontend types**: hand-maintained in `src/lib/api.ts`. When changing API shapes, update both files in the same PR. Codegen via `openapi-typescript` can be added later — there is intentionally none today.

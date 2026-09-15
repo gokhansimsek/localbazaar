@@ -259,6 +259,28 @@ locally.
 
 Both backend and frontend go through pre-commit hooks. Backend: **ruff** (lint + format), **flake8** (bugbear + comprehensions + docstrings), **pyright**, **pytest**. Frontend: **prettier**, **eslint** (Next.js 16 flat config), **tsc**, **vitest**. See `.pre-commit-config.yaml` for details.
 
+### Running the backend integration tests locally
+
+`test_api_prices.py`, `test_api_suggestions.py`, and `test_api_admin.py` need a real PostgreSQL reachable at `TEST_DATABASE_URL` — they're skipped otherwise. `docker-compose.test.yml` at the repo root spins up a disposable Postgres 17 just for this (never RDS, never your dev database):
+
+```powershell
+docker compose -f docker-compose.test.yml up -d
+$env:TEST_DATABASE_URL = "postgresql+psycopg://local_bazaar_test:local_bazaar_test@localhost:5433/local_bazaar_test"
+cd apps/api
+uv run pytest    # the db_session fixture creates + drops its own tables per test — no seeding needed
+```
+
+Data lives on tmpfs, so `docker compose -f docker-compose.test.yml down` (or `restart test-db`) wipes it. pytest expects an **empty** database: seeded rows break its assertions and its teardown drops the tables. If you've seeded it for manual exploration (below), restart the container before running pytest.
+
+To instead point the running API/web stack at this database for manual exploration with a small mock dataset (a few products with a week of price history, a handful of geocoded markets) — instead of waiting on real scrapers or Google geocoding quota — run migrations and the seed script against the same URL via `DATABASE_URL` (not `TEST_DATABASE_URL`, which only the pytest fixture reads):
+
+```powershell
+$env:DATABASE_URL = "postgresql+psycopg://local_bazaar_test:local_bazaar_test@localhost:5433/local_bazaar_test"
+uv run alembic upgrade head
+uv run python scripts/seed_test_db.py
+uv run uvicorn local_bazaar.main:app --reload
+```
+
 Ad-hoc runs:
 
 ```powershell

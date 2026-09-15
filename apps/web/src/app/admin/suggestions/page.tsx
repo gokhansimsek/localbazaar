@@ -96,7 +96,7 @@ export default function AdminSuggestionsPage() {
           value={tokenInput}
           onChange={(e) => setTokenInput(e.target.value)}
           placeholder="ADMIN_TOKEN"
-          className="w-full rounded-xl border border-surface-border bg-white px-3 py-2 text-sm outline-none focus:border-indigo-400 focus:shadow-ring"
+          className="w-full rounded-xl border border-surface-border bg-white px-3 py-2 text-sm outline-none focus:border-crate-400 focus:shadow-ring"
         />
         <button type="submit" className="btn-primary w-full" disabled={loading}>
           {loading ? "Kontrol ediliyor…" : "Giriş"}
@@ -118,7 +118,7 @@ export default function AdminSuggestionsPage() {
               setStatus(next);
               void load(token, next);
             }}
-            className="rounded-xl border border-surface-border bg-white px-3 py-2 text-sm outline-none focus:border-indigo-400 focus:shadow-ring"
+            className="rounded-xl border border-surface-border bg-white px-3 py-2 text-sm outline-none focus:border-crate-400 focus:shadow-ring"
           >
             {STATUSES.map((s) => (
               <option key={s} value={s}>
@@ -151,7 +151,7 @@ export default function AdminSuggestionsPage() {
                   className={cn(
                     "rounded-full px-2.5 py-0.5 text-xs font-medium",
                     s.status === "pending"
-                      ? "bg-indigo-50 text-indigo-700"
+                      ? "bg-ochre-50 text-ochre-700"
                       : s.status === "approved"
                         ? "bg-surface-muted text-success"
                         : "bg-surface-muted text-danger",

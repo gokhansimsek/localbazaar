@@ -53,7 +53,7 @@ export function DateSelector({ value, onChange, max }: Props) {
         onClick={() => setOpen((v) => !v)}
         aria-haspopup="dialog"
         aria-expanded={open}
-        className="inline-flex items-center gap-2 rounded-xl border border-surface-border bg-white px-3 py-2 text-sm transition-all hover:border-indigo-300 focus:border-indigo-400 focus:shadow-ring focus:outline-none"
+        className="inline-flex items-center gap-2 rounded-xl border border-surface-border bg-white px-3 py-2 text-sm transition-all hover:border-ink-faint focus:border-crate-400 focus:shadow-ring focus:outline-none"
       >
         <CalendarIcon size={16} className="text-ink-muted" />
         <span className={value ? "text-ink" : "text-ink-faint"}>{trDisplay(value)}</span>

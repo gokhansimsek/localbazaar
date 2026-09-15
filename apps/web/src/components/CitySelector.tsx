@@ -17,11 +17,12 @@ export function CitySelector({ cities, value, onChange }: Props) {
           key={city.slug}
           type="button"
           onClick={() => onChange(city.slug)}
+          aria-pressed={value === city.slug}
           className={cn(
-            "rounded-full px-3.5 py-1.5 text-xs font-medium transition-all",
+            "rounded-md px-3 py-1.5 text-xs font-medium transition-colors",
             value === city.slug
-              ? "bg-indigo-500 text-white shadow-soft"
-              : "border border-surface-border bg-white text-ink-soft hover:border-indigo-300 hover:text-indigo-700",
+              ? "bg-ink text-surface-subtle"
+              : "border border-surface-border bg-white text-ink-soft hover:border-ink-faint hover:text-ink",
           )}
         >
           {city.name}

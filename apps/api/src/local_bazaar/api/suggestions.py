@@ -65,8 +65,8 @@ class SuggestionCreate(BaseModel):
     market_type: MarketType | None = None
     province: str | None = Field(default=None, max_length=64)
     district: str | None = Field(default=None, max_length=64)
-    latitude: float | None = None
-    longitude: float | None = None
+    latitude: float | None = Field(default=None, ge=-90, le=90)
+    longitude: float | None = Field(default=None, ge=-180, le=180)
 
     # Honeypot: real users never see or fill this; bots tend to fill every field.
     website: str = ""

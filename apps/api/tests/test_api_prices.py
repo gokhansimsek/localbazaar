@@ -14,23 +14,25 @@ from decimal import Decimal
 
 import pytest
 from httpx import ASGITransport, AsyncClient
-from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from local_bazaar.db import (
-    ensure_city_table,
-    get_session,
-    prices_table_name,
-)
+from local_bazaar.db import get_session
 from local_bazaar.main import app
 from local_bazaar.models import City, CitySourceType
+from local_bazaar.scrapers.base import ProductPrice, upsert_prices
 from tests.conftest import requires_db
 
 pytestmark = [requires_db, pytest.mark.asyncio]
 
 
 async def _seed(session: AsyncSession) -> None:
-    """Seed two cities and a few price rows in each."""
+    """Seed two cities and a few price rows in each.
+
+    Writes through :func:`upsert_prices` — the same path every scraper uses —
+    rather than hand-rolled INSERTs, so this stays correct as the per-city
+    table schema evolves (it resolves ``product_id`` via the ``products``
+    registry instead of writing the pre-migration-0009 legacy text columns).
+    """
     session.add(
         City(
             slug="national",
@@ -50,79 +52,52 @@ async def _seed(session: AsyncSession) -> None:
         )
     )
     await session.commit()
-    await ensure_city_table(session, "national")
-    await ensure_city_table(session, "istanbul")
 
-    for slug, samples in (
-        (
-            "national",
-            [
-                (
-                    date(2026, 5, 10),
-                    "Domates",
-                    "Salka",
-                    "Geleneksel/Konvansiyonel",
-                    "17.50",
-                    1000,
-                    "Kg",
-                ),
-                (
-                    date(2026, 5, 11),
-                    "Domates",
-                    "Salka",
-                    "Geleneksel/Konvansiyonel",
-                    "18.40",
-                    1250,
-                    "Kg",
-                ),
-                (
-                    date(2026, 5, 11),
-                    "Salatalık",
-                    "Sera",
-                    "Geleneksel/Konvansiyonel",
-                    "11.75",
-                    820,
-                    "Kg",
-                ),
-            ],
-        ),
-        (
-            "istanbul",
-            [
-                (
-                    date(2026, 5, 11),
-                    "Domates",
-                    "Salka",
-                    "Geleneksel/Konvansiyonel",
-                    "19.10",
-                    600,
-                    "Kg",
-                ),
-            ],
-        ),
-    ):
-        table = prices_table_name(slug)
-        for row in samples:
-            await session.execute(
-                text(
-                    f"""
-                    INSERT INTO {table}
-                    (bulletin_date, product_name, product_variety, product_category,
-                     average_price, transaction_volume, unit_name)
-                    VALUES (:d, :n, :v, :c, :p, :h, :u)
-                    """
-                ),
-                {
-                    "d": row[0],
-                    "n": row[1],
-                    "v": row[2],
-                    "c": row[3],
-                    "p": Decimal(row[4]),
-                    "h": row[5],
-                    "u": row[6],
-                },
-            )
-    await session.commit()
+    await upsert_prices(
+        session,
+        [
+            ProductPrice(
+                city_name="National",
+                bulletin_date=date(2026, 5, 10),
+                product_name="Domates",
+                product_variety="Salka",
+                product_category="Geleneksel/Konvansiyonel",
+                average_price=Decimal("17.50"),
+                transaction_volume=1000,
+                unit_name="Kg",
+            ),
+            ProductPrice(
+                city_name="National",
+                bulletin_date=date(2026, 5, 11),
+                product_name="Domates",
+                product_variety="Salka",
+                product_category="Geleneksel/Konvansiyonel",
+                average_price=Decimal("18.40"),
+                transaction_volume=1250,
+                unit_name="Kg",
+            ),
+            ProductPrice(
+                city_name="National",
+                bulletin_date=date(2026, 5, 11),
+                product_name="Salatalık",
+                product_variety="Sera",
+                product_category="Geleneksel/Konvansiyonel",
+                average_price=Decimal("11.75"),
+                transaction_volume=820,
+                unit_name="Kg",
+            ),
+            ProductPrice(
+                city_name="Istanbul",
+                bulletin_date=date(2026, 5, 11),
+                product_name="Domates",
+                product_variety="Salka",
+                product_category="Geleneksel/Konvansiyonel",
+                average_price=Decimal("19.10"),
+                transaction_volume=600,
+                unit_name="Kg",
+            ),
+        ],
+    )
 
 
 def _override_session(

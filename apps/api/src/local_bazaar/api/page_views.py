@@ -39,6 +39,10 @@ _ALLOWED_PATHS: frozenset[str] = frozenset(
         "/markets",
         "/products/[name]",
         "/privacy",
+        "/about",
+        "/contact",
+        "/terms",
+        "/cookies",
     }
 )
 

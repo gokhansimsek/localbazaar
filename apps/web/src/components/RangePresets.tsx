@@ -26,11 +26,10 @@ export function RangePresets({ value, onChange }: Props) {
           type="button"
           onClick={() => onChange(o.key)}
           className={cn(
-            "rounded-lg px-3 py-1.5 text-xs font-medium transition-all",
-            value === o.key
-              ? "bg-indigo-500 text-white shadow-soft"
-              : "text-ink-soft hover:bg-surface-muted",
+            "rounded-md px-3 py-1.5 text-xs font-medium transition-colors",
+            value === o.key ? "bg-ink text-surface-subtle" : "text-ink-soft hover:bg-surface-muted",
           )}
+          aria-pressed={value === o.key}
         >
           {o.label}
         </button>

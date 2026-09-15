@@ -40,7 +40,8 @@ from selectolax.parser import HTMLParser
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from local_bazaar.scrapers.base import ProductPrice, upsert_prices
+from local_bazaar.config import settings
+from local_bazaar.scrapers.base import ProductPrice, is_allowed, upsert_prices
 
 log = logging.getLogger(__name__)
 
@@ -84,8 +85,18 @@ class AntalyaScraper:
             session: An open async DB session.
 
         Returns:
-            Total rows written across newly-scraped days.
+            Total rows written across newly-scraped days. ``0`` is also
+            returned when ``robots.txt`` disallows this run entirely.
         """
+        # This scraper drives headless Chromium via Playwright instead of
+        # httpx, so it never passes through fetch_with_retry()'s automatic
+        # robots.txt check. Check explicitly, before Chromium is even
+        # launched, so a disallowed run costs nothing beyond this one
+        # (cached) robots.txt fetch.
+        if not await is_allowed(_URL):
+            log.warning("antalya: robots.txt disallows %s — skipping this run.", _URL)
+            return 0
+
         # Import lazily so importing the module doesn't pull Playwright into
         # the API process at startup. The scheduler imports this module on
         # demand for each city scrape; missing Playwright surfaces as an
@@ -108,6 +119,7 @@ class AntalyaScraper:
                 context = await browser.new_context(
                     locale="tr-TR",
                     viewport={"width": 1280, "height": 800},
+                    user_agent=settings.scraper_user_agent,
                 )
                 page = await context.new_page()
                 for offset in range(self.lookback_days):

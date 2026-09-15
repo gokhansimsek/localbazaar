@@ -74,11 +74,7 @@ const API_BASE = process.env.NEXT_PUBLIC_API_URL?.replace(/\/$/, "") ?? "";
 
 async function get<T>(path: string, init?: RequestInit): Promise<T> {
   const url = `${API_BASE}${path}`;
-  const res = await fetch(url, {
-    // SSR-friendly default — price data is daily, no need to bust per request.
-    next: { revalidate: 60 },
-    ...init,
-  });
+  const res = await fetch(url, init);
   if (!res.ok) {
     throw new Error(`GET ${path} failed: ${res.status} ${res.statusText}`);
   }
@@ -191,6 +187,27 @@ export async function submitSuggestion(data: SuggestionCreate): Promise<Suggesti
     throw new Error(`POST /api/suggestions failed: ${res.status} ${res.statusText}`);
   }
   return (await res.json()) as SuggestionCreated;
+}
+
+// --- Newsletter -----------------------------------------------------------
+
+export type NewsletterSignup = {
+  email: string;
+  consent: boolean;
+  /** Honeypot — always empty for real users. */
+  website?: string;
+};
+
+export async function subscribeNewsletter(data: NewsletterSignup): Promise<{ status: string }> {
+  const res = await fetch(`${API_BASE}/api/newsletter`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(data),
+  });
+  if (!res.ok) {
+    throw new Error(`POST /api/newsletter failed: ${res.status} ${res.statusText}`);
+  }
+  return (await res.json()) as { status: string };
 }
 
 // --- Hidden admin review surface (token-gated) ----------------------------
