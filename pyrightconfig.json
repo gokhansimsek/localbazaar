@@ -1,6 +1,12 @@
 {
   "include": ["apps/api/src", "apps/api/tests", "apps/api/migrations"],
-  "exclude": ["**/.venv", "**/__pycache__", "**/.uv_tmp"],
+  "exclude": [
+    "**/.venv",
+    "**/__pycache__",
+    "**/.uv_tmp",
+    "**/node_modules",
+    "**/.*"
+  ],
   "extraPaths": ["apps/api/src"],
   "venvPath": "apps/api",
   "venv": ".venv",
